@@ -1,0 +1,53 @@
+import { pode } from '../permissoes.js';
+import { esc, $, avisar } from '../util.js';
+import { abrirModal } from './modal.js';
+
+export async function render(el, ctx) {
+  const { estado } = ctx;
+  const s = estado.sessao;
+  const linhas = [...estado.clientes].sort((a, b) => a.nome.localeCompare(b.nome)).map((c) => {
+    const projetos = estado.projetos.filter((p) => p.cliente_id === c.id);
+    const abertas = estado.tarefas.filter((t) => t.status !== 'feito' && projetos.some((p) => p.id === t.projeto_id)).length;
+    return `<tr class="clicavel" data-id="${c.id}"><td><b>${esc(c.nome)}</b></td><td>${esc(c.contato)}</td><td>${esc(c.instagram)}</td>
+      <td>${projetos.length}</td><td>${abertas}</td></tr>`;
+  }).join('');
+  el.innerHTML = `
+    <div class="cabecalho"><div><div class="sobre">Clientes</div><h1>Carteira de clientes</h1></div>
+      ${pode(s, 'clientes', 'criar') ? '<button class="botao primario" id="novo">+ Novo cliente</button>' : ''}</div>
+    <div class="painel">${linhas ? `<table class="tabela"><thead><tr><th>Cliente</th><th>Contato</th><th>Instagram</th><th>Projetos</th><th>Tarefas abertas</th></tr></thead><tbody>${linhas}</tbody></table>` : '<div class="vazio">Nenhum cliente cadastrado.</div>'}</div>`;
+  el.querySelector('#novo')?.addEventListener('click', () => abrirCliente(ctx, null));
+  el.querySelectorAll('tr[data-id]').forEach((tr) => tr.addEventListener('click', () => abrirCliente(ctx, estado.clientes.find((c) => c.id === tr.dataset.id))));
+}
+
+function abrirCliente(ctx, cliente) {
+  const s = ctx.estado.sessao;
+  const novo = !cliente;
+  const c = cliente ?? { nome: '', contato: '', email: '', telefone: '', instagram: '', observacoes: '' };
+  const podeSalvar = novo ? pode(s, 'clientes', 'criar') : pode(s, 'clientes', 'editar');
+  const dis = podeSalvar ? '' : 'disabled';
+  const projetos = novo ? [] : ctx.estado.projetos.filter((p) => p.cliente_id === c.id);
+  const campo = (nome, rotulo, tipo = 'text', inteiro = false) => `<div class="campo ${inteiro ? 'inteiro' : ''}"><label>${rotulo}</label><input type="${tipo}" name="${nome}" value="${esc(c[nome])}" ${dis} ${nome === 'nome' ? 'required' : ''}></div>`;
+  const { el, fechar } = abrirModal({
+    titulo: novo ? 'Novo cliente' : esc(c.nome),
+    corpo: `<form class="grade-campos" id="form-cliente">
+      ${campo('nome', 'Nome', 'text', true)}${campo('contato', 'Pessoa de contato')}${campo('telefone', 'Telefone')}${campo('email', 'E-mail', 'email')}${campo('instagram', 'Instagram')}
+      <div class="campo inteiro"><label>Observações</label><textarea name="observacoes" ${dis}>${esc(c.observacoes)}</textarea></div></form>
+      ${novo ? '' : `<h3 style="margin-top:22px">Projetos</h3><div class="lista">${projetos.map((p) => `<div class="item" data-projeto="${p.id}"><div class="titulo">${esc(p.nome)}<small>${esc(p.tipo)}</small></div></div>`).join('') || '<p class="fraco">Nenhum projeto ainda.</p>'}</div>`}`,
+    rodape: `${!novo && pode(s, 'clientes', 'apagar') ? '<button class="botao perigo" id="apagar">Apagar</button>' : ''}<span class="espaco"></span>
+      ${podeSalvar ? '<button class="botao primario" id="salvar">Salvar</button>' : ''}`,
+  });
+  el.querySelectorAll('[data-projeto]').forEach((i) => i.addEventListener('click', () => { fechar(); ctx.navegar('projetos'); }));
+  $('#salvar', el)?.addEventListener('click', async () => {
+    const form = $('#form-cliente', el);
+    if (!form.reportValidity()) return;
+    const dados = Object.fromEntries(new FormData(form));
+    try {
+      if (novo) await ctx.db().inserir('clientes', dados); else await ctx.db().atualizar('clientes', c.id, dados);
+      fechar(); avisar('Cliente salvo'); await ctx.recarregar();
+    } catch (err) { avisar(err.message); }
+  });
+  $('#apagar', el)?.addEventListener('click', async (e) => {
+    if (e.target.dataset.confirmar !== 'sim') { e.target.dataset.confirmar = 'sim'; e.target.textContent = 'Clique de novo para apagar'; return; }
+    try { await ctx.db().apagar('clientes', c.id); fechar(); avisar('Cliente apagado'); await ctx.recarregar(); } catch (err) { avisar(err.message); }
+  });
+}

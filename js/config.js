@@ -1,0 +1,55 @@
+// Configuração do sistema.
+// Enquanto supabaseUrl estiver vazio, o sistema roda em MODO DEMONSTRAÇÃO:
+// os dados ficam só neste navegador, com usuários de exemplo.
+// Para ligar o banco de verdade, cole aqui a URL e a chave "anon public"
+// do projeto no Supabase (Project Settings > API). A chave anon é pública
+// por natureza: quem protege os dados são as regras do banco (schema.sql).
+export const CONFIG = {
+  supabaseUrl: '',
+  supabaseAnonKey: '',
+};
+
+export const SETORES = [
+  { chave: 'comercial', nome: 'Comercial' },
+  { chave: 'criacao', nome: 'Criação' },
+  { chave: 'execucao', nome: 'Execução' },
+];
+
+export const STATUS = [
+  { chave: 'a_fazer', nome: 'A fazer' },
+  { chave: 'fazendo', nome: 'Fazendo' },
+  { chave: 'em_aprovacao', nome: 'Em aprovação' },
+  { chave: 'feito', nome: 'Feito' },
+];
+
+export const TIPOS = [
+  { chave: 'tarefa', nome: 'Tarefa' },
+  { chave: 'gravacao', nome: 'Gravação' },
+  { chave: 'reuniao', nome: 'Reunião' },
+  { chave: 'entrega', nome: 'Entrega' },
+  { chave: 'post', nome: 'Post' },
+];
+
+export const STATUS_PROJETO = [
+  { chave: 'ativo', nome: 'Ativo' },
+  { chave: 'pausado', nome: 'Pausado' },
+  { chave: 'concluido', nome: 'Concluído' },
+];
+
+// Mesmo catálogo da tabela "modulos" do banco.
+export const MODULOS = [
+  { chave: 'visao_geral', nome: 'Visão geral', fase: 1 },
+  { chave: 'tarefas', nome: 'Atividades e calendário', fase: 1 },
+  { chave: 'clientes', nome: 'Clientes', fase: 1 },
+  { chave: 'projetos', nome: 'Projetos', fase: 1 },
+  { chave: 'comercial', nome: 'Comercial', fase: 2 },
+  { chave: 'criacao', nome: 'Criação', fase: 3 },
+  { chave: 'execucao', nome: 'Execução', fase: 3 },
+  { chave: 'materiais', nome: 'Banco de materiais', fase: 3 },
+  { chave: 'equipamentos', nome: 'Equipamentos', fase: 3 },
+  { chave: 'financeiro', nome: 'Financeiro', fase: 4 },
+  { chave: 'horas', nome: 'Registro de horas', fase: 4 },
+  { chave: 'equipe', nome: 'Equipe e acessos', fase: 1 },
+];
+
+export const nomeDe = (lista, chave) => lista.find((i) => i.chave === chave)?.nome ?? chave;
