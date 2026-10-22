@@ -43,7 +43,7 @@ export function ligarTarefas(ctx, raiz) {
 }
 
 // Filtros comuns de Atividades e Calendário (guardados enquanto a página está aberta).
-export const filtros = { setor: '', responsavel: '', projeto: '', busca: '' };
+export const filtros = { setor: '', responsavel: '', cliente: '', projeto: '', busca: '' };
 
 export function barraFiltros(ctx) {
   const { estado } = ctx;
@@ -52,7 +52,8 @@ export function barraFiltros(ctx) {
     <input type="search" id="f-busca" placeholder="Buscar" value="${esc(filtros.busca)}">
     <select id="f-setor"><option value="">Todos os setores</option>${SETORES.map((s) => `<option value="${s.chave}" ${filtros.setor === s.chave ? 'selected' : ''}>${s.nome}</option>`).join('')}</select>
     <select id="f-responsavel"><option value="">Todas as pessoas</option><option value="eu" ${filtros.responsavel === 'eu' ? 'selected' : ''}>Só as minhas</option>${pessoas.map((p) => `<option value="${p.id}" ${filtros.responsavel === p.id ? 'selected' : ''}>${esc(p.nome)}</option>`).join('')}</select>
-    <select id="f-projeto"><option value="">Todos os clientes e projetos</option>${grupoProjetos(ctx)}</select>
+    <select id="f-cliente"><option value="">Todos os clientes</option>${[...estado.clientes].sort((a, b) => a.nome.localeCompare(b.nome)).map((c) => `<option value="${c.id}" ${filtros.cliente === c.id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}<option value="interno" ${filtros.cliente === 'interno' ? 'selected' : ''}>Interno (sem cliente)</option></select>
+    ${seletorProjetos(ctx)}
   </div>`;
 }
 
@@ -61,17 +62,27 @@ function grupoProjetos(ctx) {
   const { estado } = ctx;
   const grupos = [...estado.clientes].sort((a, b) => a.nome.localeCompare(b.nome)).map((c) => [c.id, c.nome]);
   grupos.push([null, 'Interno']);
-  return grupos.map(([id, nome]) => {
+  return grupos.filter(([id]) => !filtros.cliente || (filtros.cliente === 'interno' ? id === null : id === filtros.cliente)).map(([id, nome]) => {
     const lista = estado.projetos.filter((p) => (p.cliente_id ?? null) === id);
     if (!lista.length) return '';
     return `<optgroup label="${esc(nome)}">${lista.map((p) => `<option value="${p.id}" ${filtros.projeto === p.id ? 'selected' : ''}>${esc(p.nome)}</option>`).join('')}</optgroup>`;
   }).join('');
 }
 
-export function ligarFiltros(raiz, redesenhar) {
+const seletorProjetos = (ctx) => `<select id="f-projeto"><option value="">Todos os projetos</option>${grupoProjetos(ctx)}</select>`;
+
+export function ligarFiltros(ctx, raiz, redesenhar) {
   const ligar = (id, chave, evento = 'change') => raiz.querySelector(id).addEventListener(evento, (e) => { filtros[chave] = e.target.value; redesenhar(); });
   ligar('#f-setor', 'setor');
   ligar('#f-responsavel', 'responsavel');
+  raiz.querySelector('#f-cliente').addEventListener('change', (e) => {
+    filtros.cliente = e.target.value;
+    filtros.projeto = '';
+    // Troca as opções de projeto para as do cliente escolhido.
+    raiz.querySelector('#f-projeto').outerHTML = seletorProjetos(ctx);
+    raiz.querySelector('#f-projeto').addEventListener('change', (ev) => { filtros.projeto = ev.target.value; redesenhar(); });
+    redesenhar();
+  });
   ligar('#f-projeto', 'projeto');
   ligar('#f-busca', 'busca', 'input');
 }
@@ -82,6 +93,7 @@ export function aplicarFiltros(ctx, tarefas) {
   return tarefas.filter((t) =>
     (!filtros.setor || t.setor === filtros.setor)
     && (!filtros.responsavel || t.responsavel_id === (filtros.responsavel === 'eu' ? eu : filtros.responsavel))
+    && (!filtros.cliente || (ctx.projeto(t.projeto_id)?.cliente_id ?? 'interno') === filtros.cliente)
     && (!filtros.projeto || t.projeto_id === filtros.projeto)
     && (!busca || t.titulo.toLowerCase().includes(busca) || nomeClienteDaTarefa(ctx, t).toLowerCase().includes(busca)));
 }

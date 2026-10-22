@@ -42,7 +42,7 @@ export async function render(el, ctx) {
   el.querySelectorAll('tr[data-id]').forEach((tr) => tr.addEventListener('click', () => abrirProjeto(ctx, estado.projetos.find((p) => p.id === tr.dataset.id))));
   el.querySelectorAll('[data-quadro]').forEach((b) => b.addEventListener('click', (e) => {
     e.stopPropagation();
-    Object.assign(filtros, { projeto: b.dataset.quadro, responsavel: '', setor: '', busca: '' });
+    Object.assign(filtros, { projeto: b.dataset.quadro, cliente: '', responsavel: '', setor: '', busca: '' });
     ctx.navegar('atividades');
   }));
 }

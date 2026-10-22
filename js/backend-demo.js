@@ -5,7 +5,7 @@ import { pode, podeVerTarefa, podeEditarTarefa } from './permissoes.js';
 import { chaveDia } from './util.js';
 
 export const modo = 'demo';
-const CHAVE = 'look-sistema-demo-v1';
+const CHAVE = 'look-sistema-demo-v2';
 let banco = null;
 let usuarioAtual = null;
 
@@ -77,6 +77,11 @@ function semente() {
     t('Reunião com a Valter Vidros', { tipo: 'reuniao', setor: 'comercial', inicio: horaRelativa(3, 10) }),
     t('Contato com a Gelateria Perino', { setor: 'comercial', prazo: diaRelativo(7) }),
     t('Moodboard Ketlin Joias', { projeto_id: 'p-ketlin', setor: 'criacao', responsavel_id: marina, prazo: diaRelativo(8) }),
+    t('Post: bastidores do rebranding', { projeto_id: 'p-lotus', tipo: 'post', setor: 'criacao', inicio: horaRelativa(2, 18), responsavel_id: marina }),
+    t('Reels: unboxing de cartas raras', { projeto_id: 'p-lotus', tipo: 'post', setor: 'criacao', inicio: horaRelativa(5, 19), responsavel_id: marina }),
+    t('Carrossel: torneio de sábado', { projeto_id: 'p-lotus', tipo: 'post', setor: 'criacao', inicio: horaRelativa(9, 12), responsavel_id: marina }),
+    t('Post: harmonização esfiha e vinho', { projeto_id: 'p-flambe', tipo: 'post', setor: 'criacao', inicio: horaRelativa(4, 11) }),
+    t('Stories: menu da semana', { projeto_id: 'p-flambe', tipo: 'post', setor: 'criacao', inicio: horaRelativa(8, 17) }),
     t('Site da LOOK no ar com HTTPS', { setor: 'execucao', status: 'feito', prazo: diaRelativo(-1) }),
   ];
   const comentarios = [

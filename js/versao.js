@@ -9,6 +9,8 @@ export const HISTORICO = [
       'Projetos ligados ao cliente: na tarefa, escolhe-se o cliente e depois um dos projetos dele',
       'Ficha do cliente mostra os projetos dele e cria projeto novo ali mesmo',
       'Tela Projetos agrupada por cliente; filtros de Atividades e Calendário agrupados por cliente',
+      'Calendário com duas abas: Agenda da equipe e Agenda de postagens',
+      'Filtro por cliente em Atividades e nas duas agendas',
     ],
   },
   {

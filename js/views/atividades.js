@@ -12,7 +12,7 @@ export async function render(el, ctx) {
     <div class="kanban" id="kanban"></div>`;
   el.querySelector('#nova')?.addEventListener('click', () => ctx.abrirTarefa(null));
   const desenhar = () => desenharQuadro(el.querySelector('#kanban'), ctx);
-  ligarFiltros(el, desenhar);
+  ligarFiltros(ctx, el, desenhar);
   desenhar();
 }
 
