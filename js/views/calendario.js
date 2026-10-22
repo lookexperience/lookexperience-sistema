@@ -1,7 +1,7 @@
 import { SETORES, STATUS, nomeDe } from '../config.js';
 import { pode } from '../permissoes.js';
 import { esc, nomeMes, DIAS_SEMANA, chaveDia, hoje, hora, diaDaTarefa } from '../util.js';
-import { ligarTarefas, barraFiltros, ligarFiltros, aplicarFiltros } from './comum.js';
+import { ligarTarefas, barraFiltros, ligarFiltros, aplicarFiltros, corDaTarefa } from './comum.js';
 
 let mesVisto = null; // primeiro dia do mês na tela
 let aba = 'equipe'; // 'equipe' ou 'postagens'
@@ -63,7 +63,7 @@ function desenharMes(el, ctx) {
       return `<div class="dia ${d.getMonth() !== mesVisto.getMonth() ? 'fora' : ''} ${chave === hoje() ? 'hoje' : ''}" data-dia="${chave}">
         <span class="n">${d.getDate()}</span>
         ${eventos.map((t) => (aba === 'postagens'
-          ? `<div class="evento post ${t.status === 'feito' ? 'feito' : ''}" data-tarefa="${t.id}" title="${esc(t.titulo)} · ${nomeDe(STATUS, t.status)}">
+          ? `<div class="evento post ${t.status === 'feito' ? 'feito' : ''}" data-tarefa="${t.id}" style="--cor-cliente:${corDaTarefa(ctx, t)}" title="${esc(t.titulo)} · ${nomeDe(STATUS, t.status)}">
               <small>${t.inicio ? `${hora(t.inicio)} · ` : ''}${esc(nomeCliente(ctx, t))}</small>${esc(t.titulo)}</div>`
           : `<div class="evento ${t.status === 'feito' ? 'feito' : ''}" data-tarefa="${t.id}" title="${esc(t.titulo)} · ${nomeDe(STATUS, t.status)}">
               <span class="ponto ${t.setor}"></span>${t.inicio ? `<b>${hora(t.inicio)}</b>` : ''} ${esc(t.titulo)}</div>`)).join('')}

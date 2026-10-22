@@ -1,4 +1,4 @@
-import { SETORES, TIPOS, nomeDe } from '../config.js';
+import { SETORES, TIPOS, CORES_CLIENTE, COR_PADRAO, nomeDe } from '../config.js';
 import { esc, iniciais, dataCurta, hora, estaAtrasada } from '../util.js';
 
 export const etiquetaSetor = (setor) => `<span class="etiqueta"><span class="ponto ${setor}"></span>${nomeDe(SETORES, setor)}</span>`;
@@ -9,6 +9,14 @@ export function nomeClienteDaTarefa(ctx, t) {
   return `${ctx.cliente(projeto.cliente_id)?.nome ?? 'Sem cliente'} · ${projeto.nome}`;
 }
 
+export const corCliente = (cliente) => cliente?.cor || COR_PADRAO;
+export const corDaTarefa = (ctx, t) => corCliente(ctx.cliente(ctx.projeto(t.projeto_id)?.cliente_id));
+
+// Paleta de cores clicável. "nome" identifica o grupo de botões.
+export const paletaCores = (atual, nome, desabilitado = false) => `<div class="paleta" data-paleta="${nome}">
+  ${CORES_CLIENTE.map((c) => `<button type="button" class="amostra ${c.chave === atual ? 'escolhida' : ''}" data-cor="${c.chave}" title="${c.nome}" style="--cor:${c.chave}" ${desabilitado ? 'disabled' : ''}></button>`).join('')}
+</div>`;
+
 export function quando(t) {
   if (t.inicio) return `${dataCurta(t.inicio)}, ${hora(t.inicio)}`;
   if (t.prazo) return `até ${dataCurta(t.prazo)}`;
@@ -18,7 +26,7 @@ export function quando(t) {
 export function cartaoTarefa(ctx, t, arrastavel = false) {
   const responsavel = ctx.nomePerfil(t.responsavel_id);
   const tipo = t.tipo !== 'tarefa' ? `<span class="etiqueta">${nomeDe(TIPOS, t.tipo)}</span>` : '';
-  return `<div class="cartao" data-tarefa="${t.id}" ${arrastavel ? 'draggable="true"' : ''}>
+  return `<div class="cartao" data-tarefa="${t.id}" ${arrastavel ? 'draggable="true"' : ''} style="--cor-cliente:${corDaTarefa(ctx, t)}">
     <div class="titulo">${esc(t.titulo)}</div>
     <div class="cliente">${esc(nomeClienteDaTarefa(ctx, t))}</div>
     <div class="rodape">

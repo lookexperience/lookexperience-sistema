@@ -5,7 +5,7 @@ import { pode, podeVerTarefa, podeEditarTarefa } from './permissoes.js';
 import { chaveDia } from './util.js';
 
 export const modo = 'demo';
-const CHAVE = 'look-sistema-demo-v2';
+const CHAVE = 'look-sistema-demo-v3';
 let banco = null;
 let usuarioAtual = null;
 
@@ -47,10 +47,10 @@ function semente() {
   ];
   const c = (id, nome, contato, extra = {}) => ({ id, nome, contato, email: '', telefone: '', instagram: '', observacoes: '', criado_por: pablo, criado_em: agora, ...extra });
   const clientes = [
-    c('c-lotus', 'Lotus Games', 'Responsável da loja', { instagram: '@lotusgames' }),
-    c('c-flambe', 'Flambé', 'Sócios', { observacoes: 'Restaurante de esfihas e vinhos. Paleta proposta: Bordeaux, Creme, Carvão.' }),
-    c('c-fusion', 'Fusion Soldas', ''),
-    c('c-ketlin', 'Ketlin Joias', 'Ketlin'),
+    c('c-lotus', 'Lotus Games', 'Responsável da loja', { instagram: '@lotusgames', cor: '#4F7FB8' }),
+    c('c-flambe', 'Flambé', 'Sócios', { cor: '#C2574A', observacoes: 'Restaurante de esfihas e vinhos. Paleta proposta: Bordeaux, Creme, Carvão.' }),
+    c('c-fusion', 'Fusion Soldas', '', { cor: '#D08C3C' }),
+    c('c-ketlin', 'Ketlin Joias', 'Ketlin', { cor: '#B5638F' }),
   ];
   const p = (id, cliente_id, nome, tipo, inicio, fim) => ({ id, cliente_id, nome, tipo, status: 'ativo', inicio, fim, descricao: '', criado_por: pablo, criado_em: agora });
   const projetos = [

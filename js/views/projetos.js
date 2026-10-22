@@ -2,7 +2,7 @@ import { STATUS_PROJETO, nomeDe } from '../config.js';
 import { pode } from '../permissoes.js';
 import { esc, $, dataCurta, avisar } from '../util.js';
 import { abrirModal, opcoes } from './modal.js';
-import { filtros } from './comum.js';
+import { filtros, paletaCores, corCliente } from './comum.js';
 
 export async function render(el, ctx) {
   const { estado } = ctx;
@@ -20,16 +20,20 @@ export async function render(el, ctx) {
       <td><button class="botao pequeno" data-quadro="${p.id}">Ver tarefas</button></td></tr>`;
   };
   // Um bloco por cliente, com os projetos dele; projetos internos no fim.
-  const grupos = [...estado.clientes].sort((a, b) => a.nome.localeCompare(b.nome)).map((c) => ({ id: c.id, nome: c.nome }));
-  grupos.push({ id: null, nome: 'Interno (sem cliente)' });
+  const grupos = [...estado.clientes].sort((a, b) => a.nome.localeCompare(b.nome)).map((c) => ({ id: c.id, nome: c.nome, cor: corCliente(c) }));
+  grupos.push({ id: null, nome: 'Interno (sem cliente)', cor: corCliente(null) });
+  const podeMudarCor = pode(s, 'clientes', 'editar');
   const blocos = grupos.map((g) => {
     const lista = estado.projetos.filter((p) => (p.cliente_id ?? null) === g.id)
       .sort((a, b) => ordem[a.status] - ordem[b.status] || (a.fim ?? '9').localeCompare(b.fim ?? '9'));
     if (!lista.length) return '';
-    return `<div class="painel" style="margin-bottom:16px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+    return `<div class="painel janela-cliente" style="--cor-cliente:${g.cor}">
+      <div class="janela-topo">
         <h2>${esc(g.nome)}</h2>
+        ${g.id && podeMudarCor ? `<button class="botao pequeno sutil" data-mudar-cor="${g.id}" title="Mudar a cor"><span class="ponto" style="background:${g.cor}"></span> Cor</button>` : ''}
+        <span class="espaco"></span>
         ${pode(s, 'projetos', 'criar') && g.id ? `<button class="botao pequeno" data-novo-para="${g.id}">+ Projeto para ${esc(g.nome)}</button>` : ''}</div>
+      ${g.id && podeMudarCor ? `<div class="oculto" data-paleta-de="${g.id}" style="margin-bottom:10px">${paletaCores(g.cor, g.id)}</div>` : ''}
       <table class="tabela" style="table-layout:fixed"><colgroup><col style="width:28%"><col style="width:17%"><col style="width:11%"><col style="width:16%"><col style="width:16%"><col style="width:12%"></colgroup><thead><tr><th>Projeto</th><th>Tipo</th><th>Status</th><th>Período</th><th>Andamento</th><th></th></tr></thead>
       <tbody>${lista.map(linha).join('')}</tbody></table></div>`;
   }).join('');
@@ -38,6 +42,13 @@ export async function render(el, ctx) {
       ${pode(s, 'projetos', 'criar') ? '<button class="botao primario" id="novo">+ Novo projeto</button>' : ''}</div>
     ${blocos || '<div class="painel vazio">Nenhum projeto cadastrado.</div>'}`;
   el.querySelector('#novo')?.addEventListener('click', () => abrirProjeto(ctx, null));
+  el.querySelectorAll('[data-mudar-cor]').forEach((b) => b.addEventListener('click', () => {
+    el.querySelector(`[data-paleta-de="${b.dataset.mudarCor}"]`).classList.toggle('oculto');
+  }));
+  el.querySelectorAll('[data-paleta-de] .amostra').forEach((a) => a.addEventListener('click', async () => {
+    const id = a.closest('[data-paleta-de]').dataset.paletaDe;
+    try { await ctx.db().atualizar('clientes', id, { cor: a.dataset.cor }); await ctx.recarregar(); } catch (err) { avisar(err.message); }
+  }));
   el.querySelectorAll('[data-novo-para]').forEach((b) => b.addEventListener('click', () => abrirProjeto(ctx, null, b.dataset.novoPara)));
   el.querySelectorAll('tr[data-id]').forEach((tr) => tr.addEventListener('click', () => abrirProjeto(ctx, estado.projetos.find((p) => p.id === tr.dataset.id))));
   el.querySelectorAll('[data-quadro]').forEach((b) => b.addEventListener('click', (e) => {

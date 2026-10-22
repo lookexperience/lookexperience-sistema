@@ -79,9 +79,11 @@ create table if not exists public.clientes (
   telefone    text not null default '',
   instagram   text not null default '',
   observacoes text not null default '',
+  cor         text not null default '',   -- cor do cliente nas telas (ex.: #B8955A)
   criado_por  uuid references public.perfis(id) on delete set null default auth.uid(),
   criado_em   timestamptz not null default now()
 );
+alter table public.clientes add column if not exists cor text not null default '';
 
 create table if not exists public.projetos (
   id          uuid primary key default gen_random_uuid(),

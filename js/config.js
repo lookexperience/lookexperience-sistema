@@ -52,4 +52,19 @@ export const MODULOS = [
   { chave: 'equipe', nome: 'Equipe e acessos', fase: 1 },
 ];
 
+// Cores para identificar cada cliente nas telas (janelas, agenda, cartões).
+export const CORES_CLIENTE = [
+  { chave: '#B8955A', nome: 'Latão' },
+  { chave: '#C2574A', nome: 'Tijolo' },
+  { chave: '#D08C3C', nome: 'Âmbar' },
+  { chave: '#B9A44C', nome: 'Mostarda' },
+  { chave: '#6F9A5B', nome: 'Oliva' },
+  { chave: '#4E9A8E', nome: 'Petróleo' },
+  { chave: '#4F7FB8', nome: 'Azul' },
+  { chave: '#7A6BB5', nome: 'Violeta' },
+  { chave: '#B5638F', nome: 'Vinho' },
+  { chave: '#8C8C94', nome: 'Cinza' },
+];
+export const COR_PADRAO = '#8C8C94';
+
 export const nomeDe = (lista, chave) => lista.find((i) => i.chave === chave)?.nome ?? chave;
