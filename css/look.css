@@ -243,3 +243,18 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .amostra:disabled { cursor: default; transform: none; }
 .cartao { border-left: 3px solid var(--cor-cliente, transparent); }
 .evento.post { box-shadow: inset 3px 0 0 var(--cor-cliente, var(--latao)); }
+
+/* ---------- Tarefas dentro do projeto ---------- */
+.tabela tr.sub td { padding: 0 12px 14px; border-bottom: 1px solid var(--linha); }
+.tabela tr.clicavel + tr.sub td { border-top: 0; }
+.tabela tr.clicavel:has(+ tr.sub) td { border-bottom: 0; }
+.tarefas-projeto { border-left: 2px solid var(--linha-forte); margin-left: 4px; padding-left: 14px; }
+.tarefa-linha { display: flex; align-items: center; gap: 12px; padding: 7px 8px; border-radius: 6px; cursor: pointer; }
+.tarefa-linha:hover { background: var(--painel-2); }
+.tarefa-linha .titulo { flex: 1; min-width: 0; }
+.tarefa-linha .etiqueta:first-child { min-width: 104px; justify-content: center; }
+.tarefa-linha.feita .titulo { text-decoration: line-through; color: var(--texto-3); }
+.tarefa-linha .avatar { width: 24px; height: 24px; font-size: 10px; }
+.status-fazendo { color: var(--osso); border-color: var(--texto-3); }
+.status-em_aprovacao { color: var(--latao); border-color: var(--latao); }
+.status-feito { color: var(--texto-3); }

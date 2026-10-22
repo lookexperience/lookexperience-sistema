@@ -1,8 +1,8 @@
-import { STATUS_PROJETO, nomeDe } from '../config.js';
+import { STATUS_PROJETO, STATUS, nomeDe } from '../config.js';
 import { pode } from '../permissoes.js';
-import { esc, $, dataCurta, avisar } from '../util.js';
+import { esc, $, dataCurta, avisar, iniciais, estaAtrasada } from '../util.js';
 import { abrirModal, opcoes } from './modal.js';
-import { filtros, paletaCores, corCliente } from './comum.js';
+import { filtros, paletaCores, corCliente, quando, ligarTarefas } from './comum.js';
 
 export async function render(el, ctx) {
   const { estado } = ctx;
@@ -17,7 +17,24 @@ export async function render(el, ctx) {
       <td>${esc(p.tipo)}</td><td><span class="etiqueta">${nomeDe(STATUS_PROJETO, p.status)}</span></td>
       <td>${p.inicio ? dataCurta(p.inicio) : '—'} a ${p.fim ? dataCurta(p.fim) : '—'}</td>
       <td><div class="barra"><i style="width:${pct}%"></i></div><div class="fraco">${feitas} de ${tarefas.length} tarefas</div></td>
-      <td><button class="botao pequeno" data-quadro="${p.id}">Ver tarefas</button></td></tr>`;
+      <td><button class="botao pequeno" data-quadro="${p.id}">Abrir no quadro</button></td></tr>
+      <tr class="sub"><td colspan="6">${listaTarefas(tarefas, p)}</td></tr>`;
+  };
+  // Tarefas do projeto, uma embaixo da outra: abertas primeiro, por prazo.
+  const ordemStatus = Object.fromEntries(STATUS.map((st, i) => [st.chave, i]));
+  const listaTarefas = (tarefas, p) => {
+    const ordenadas = [...tarefas].sort((a, b) => ordemStatus[a.status] - ordemStatus[b.status] || (a.prazo ?? a.inicio ?? '9').localeCompare(b.prazo ?? b.inicio ?? '9'));
+    const itens = ordenadas.map((t) => {
+      const resp = ctx.nomePerfil(t.responsavel_id);
+      return `<div class="tarefa-linha ${t.status === 'feito' ? 'feita' : ''}" data-tarefa="${t.id}">
+        <span class="etiqueta status-${t.status}">${nomeDe(STATUS, t.status)}</span>
+        <span class="titulo">${esc(t.titulo)}${t.prioridade === 'urgente' ? ' <span class="etiqueta urgente">Urgente</span>' : ''}</span>
+        <span class="fraco ${estaAtrasada(t) ? 'atrasada' : ''}">${quando(t)}</span>
+        ${resp ? `<span class="avatar" title="${esc(resp)}">${esc(iniciais(resp))}</span>` : '<span class="avatar" title="Sem responsável">–</span>'}
+      </div>`;
+    }).join('');
+    const nova = pode(s, 'tarefas', 'criar') ? `<button class="botao pequeno sutil" data-nova-tarefa="${p.id}">+ Tarefa neste projeto</button>` : '';
+    return `<div class="tarefas-projeto">${itens || '<div class="fraco" style="padding:6px 0">Nenhuma tarefa ainda.</div>'}${nova}</div>`;
   };
   // Um bloco por cliente, com os projetos dele; projetos internos no fim.
   const grupos = [...estado.clientes].sort((a, b) => a.nome.localeCompare(b.nome)).map((c) => ({ id: c.id, nome: c.nome, cor: corCliente(c) }));
@@ -42,6 +59,11 @@ export async function render(el, ctx) {
       ${pode(s, 'projetos', 'criar') ? '<button class="botao primario" id="novo">+ Novo projeto</button>' : ''}</div>
     ${blocos || '<div class="painel vazio">Nenhum projeto cadastrado.</div>'}`;
   el.querySelector('#novo')?.addEventListener('click', () => abrirProjeto(ctx, null));
+  ligarTarefas(ctx, el);
+  el.querySelectorAll('[data-nova-tarefa]').forEach((b) => b.addEventListener('click', () => {
+    const p = estado.projetos.find((x) => x.id === b.dataset.novaTarefa);
+    ctx.abrirTarefa(null, { projeto_id: p.id, cliente_id: p.cliente_id ?? '' });
+  }));
   el.querySelectorAll('[data-mudar-cor]').forEach((b) => b.addEventListener('click', () => {
     el.querySelector(`[data-paleta-de="${b.dataset.mudarCor}"]`).classList.toggle('oculto');
   }));

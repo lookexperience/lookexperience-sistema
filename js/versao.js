@@ -11,6 +11,7 @@ export const HISTORICO = [
       'Tela Projetos agrupada por cliente; filtros de Atividades e Calendário agrupados por cliente',
       'Calendário com duas abas: Agenda da equipe e Agenda de postagens',
       'Filtro por cliente em Atividades e nas duas agendas',
+      'Projetos por cliente mostram as tarefas de cada projeto em lista, com botão para criar tarefa no projeto',
       'Cor por cliente: escolhida na janela do cliente em Projetos ou na ficha dele, e usada na agenda de postagens e nos cartões',
     ],
   },
