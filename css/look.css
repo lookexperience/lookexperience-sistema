@@ -258,3 +258,12 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .status-fazendo { color: var(--osso); border-color: var(--texto-3); }
 .status-em_aprovacao { color: var(--latao); border-color: var(--latao); }
 .status-feito { color: var(--texto-3); }
+
+/* ---------- Recolher e abrir ---------- */
+.botao-seta { background: none; border: 0; padding: 0 8px 0 0; cursor: pointer; color: var(--texto-2); font-size: 16px; line-height: 1; }
+.botao-seta:hover { color: var(--texto); }
+.seta { display: inline-block; transition: transform 0.15s; }
+.seta.fechada { transform: rotate(-90deg); }
+.janela-cliente.recolhida .janela-topo { margin-bottom: 0; }
+.janela-cliente.recolhida .janela-topo [data-novo-para], .janela-cliente.recolhida .janela-topo [data-mudar-cor] { display: none; }
+.janela-cliente.recolhida + .janela-cliente, .janela-cliente.recolhida { padding-top: 14px; padding-bottom: 14px; }

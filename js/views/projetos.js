@@ -4,21 +4,33 @@ import { esc, $, dataCurta, avisar, iniciais, estaAtrasada } from '../util.js';
 import { abrirModal, opcoes } from './modal.js';
 import { filtros, paletaCores, corCliente, quando, ligarTarefas } from './comum.js';
 
+// O que cada pessoa deixou recolhido fica guardado neste computador.
+const chaveRecolhidos = (ctx) => `look-recolhidos-${ctx.estado.sessao.perfil.id}`;
+function lerRecolhidos(ctx) {
+  try { return new Set(JSON.parse(localStorage.getItem(chaveRecolhidos(ctx)) || '[]')); } catch { return new Set(); }
+}
+function salvarRecolhidos(ctx, conjunto) {
+  try { localStorage.setItem(chaveRecolhidos(ctx), JSON.stringify([...conjunto])); } catch { /* sem armazenamento: vale só até recarregar */ }
+}
+const seta = (recolhido) => `<span class="seta ${recolhido ? 'fechada' : ''}">▾</span>`;
+
 export async function render(el, ctx) {
   const { estado } = ctx;
   const s = estado.sessao;
+  const recolhidos = lerRecolhidos(ctx);
   const ordem = { ativo: 0, pausado: 1, concluido: 2 };
   const linha = (p) => {
     const tarefas = estado.tarefas.filter((t) => t.projeto_id === p.id);
     const feitas = tarefas.filter((t) => t.status === 'feito').length;
     const pct = tarefas.length ? Math.round((feitas / tarefas.length) * 100) : 0;
+    const fechado = recolhidos.has(`p:${p.id}`);
     return `<tr class="clicavel" data-id="${p.id}">
-      <td><b>${esc(p.nome)}</b></td>
+      <td><button class="botao-seta" data-recolher="p:${p.id}" title="Mostrar ou esconder as tarefas">${seta(fechado)}</button><b>${esc(p.nome)}</b> <span class="fraco">(${tarefas.length})</span></td>
       <td>${esc(p.tipo)}</td><td><span class="etiqueta">${nomeDe(STATUS_PROJETO, p.status)}</span></td>
       <td>${p.inicio ? dataCurta(p.inicio) : '—'} a ${p.fim ? dataCurta(p.fim) : '—'}</td>
       <td><div class="barra"><i style="width:${pct}%"></i></div><div class="fraco">${feitas} de ${tarefas.length} tarefas</div></td>
       <td><button class="botao pequeno" data-quadro="${p.id}">Abrir no quadro</button></td></tr>
-      <tr class="sub"><td colspan="6">${listaTarefas(tarefas, p)}</td></tr>`;
+      <tr class="sub ${fechado ? 'oculto' : ''}" data-alvo="p:${p.id}"><td colspan="6">${listaTarefas(tarefas, p)}</td></tr>`;
   };
   // Tarefas do projeto, uma embaixo da outra: abertas primeiro, por prazo.
   const ordemStatus = Object.fromEntries(STATUS.map((st, i) => [st.chave, i]));
@@ -44,22 +56,42 @@ export async function render(el, ctx) {
     const lista = estado.projetos.filter((p) => (p.cliente_id ?? null) === g.id)
       .sort((a, b) => ordem[a.status] - ordem[b.status] || (a.fim ?? '9').localeCompare(b.fim ?? '9'));
     if (!lista.length) return '';
-    return `<div class="painel janela-cliente" style="--cor-cliente:${g.cor}">
+    const chave = `c:${g.id ?? 'interno'}`;
+    const fechado = recolhidos.has(chave);
+    return `<div class="painel janela-cliente ${fechado ? 'recolhida' : ''}" style="--cor-cliente:${g.cor}" data-janela="${chave}">
       <div class="janela-topo">
-        <h2>${esc(g.nome)}</h2>
+        <button class="botao-seta" data-recolher="${chave}" title="Mostrar ou esconder os projetos">${seta(fechado)}</button>
+        <h2>${esc(g.nome)}</h2><span class="fraco">${lista.length} projeto${lista.length > 1 ? 's' : ''}</span>
         ${g.id && podeMudarCor ? `<button class="botao pequeno sutil" data-mudar-cor="${g.id}" title="Mudar a cor"><span class="ponto" style="background:${g.cor}"></span> Cor</button>` : ''}
         <span class="espaco"></span>
         ${pode(s, 'projetos', 'criar') && g.id ? `<button class="botao pequeno" data-novo-para="${g.id}">+ Projeto para ${esc(g.nome)}</button>` : ''}</div>
       ${g.id && podeMudarCor ? `<div class="oculto" data-paleta-de="${g.id}" style="margin-bottom:10px">${paletaCores(g.cor, g.id)}</div>` : ''}
-      <table class="tabela" style="table-layout:fixed"><colgroup><col style="width:28%"><col style="width:17%"><col style="width:11%"><col style="width:16%"><col style="width:16%"><col style="width:12%"></colgroup><thead><tr><th>Projeto</th><th>Tipo</th><th>Status</th><th>Período</th><th>Andamento</th><th></th></tr></thead>
+      <table class="tabela corpo-janela ${fechado ? 'oculto' : ''}" data-alvo="${chave}" style="table-layout:fixed"><colgroup><col style="width:28%"><col style="width:17%"><col style="width:11%"><col style="width:16%"><col style="width:16%"><col style="width:12%"></colgroup><thead><tr><th>Projeto</th><th>Tipo</th><th>Status</th><th>Período</th><th>Andamento</th><th></th></tr></thead>
       <tbody>${lista.map(linha).join('')}</tbody></table></div>`;
   }).join('');
   el.innerHTML = `
     <div class="cabecalho"><div><div class="sobre">Projetos</div><h1>Projetos por cliente</h1></div>
-      ${pode(s, 'projetos', 'criar') ? '<button class="botao primario" id="novo">+ Novo projeto</button>' : ''}</div>
+      <div style="display:flex;gap:8px">
+        <button class="botao" id="recolher-tudo">Recolher tudo</button><button class="botao" id="abrir-tudo">Abrir tudo</button>
+        ${pode(s, 'projetos', 'criar') ? '<button class="botao primario" id="novo">+ Novo projeto</button>' : ''}</div></div>
     ${blocos || '<div class="painel vazio">Nenhum projeto cadastrado.</div>'}`;
   el.querySelector('#novo')?.addEventListener('click', () => abrirProjeto(ctx, null));
   ligarTarefas(ctx, el);
+
+  const alternar = (chave, fechar) => {
+    el.querySelectorAll(`[data-alvo="${chave}"]`).forEach((alvo) => alvo.classList.toggle('oculto', fechar));
+    el.querySelector(`[data-recolher="${chave}"] .seta`)?.classList.toggle('fechada', fechar);
+    el.querySelector(`[data-janela="${chave}"]`)?.classList.toggle('recolhida', fechar);
+    if (fechar) recolhidos.add(chave); else recolhidos.delete(chave);
+  };
+  el.querySelectorAll('[data-recolher]').forEach((b) => b.addEventListener('click', (e) => {
+    e.stopPropagation();
+    alternar(b.dataset.recolher, !recolhidos.has(b.dataset.recolher));
+    salvarRecolhidos(ctx, recolhidos);
+  }));
+  const todas = () => [...el.querySelectorAll('[data-recolher]')].map((b) => b.dataset.recolher);
+  el.querySelector('#recolher-tudo').addEventListener('click', () => { todas().forEach((k) => alternar(k, true)); salvarRecolhidos(ctx, recolhidos); });
+  el.querySelector('#abrir-tudo').addEventListener('click', () => { todas().forEach((k) => alternar(k, false)); salvarRecolhidos(ctx, recolhidos); });
   el.querySelectorAll('[data-nova-tarefa]').forEach((b) => b.addEventListener('click', () => {
     const p = estado.projetos.find((x) => x.id === b.dataset.novaTarefa);
     ctx.abrirTarefa(null, { projeto_id: p.id, cliente_id: p.cliente_id ?? '' });
