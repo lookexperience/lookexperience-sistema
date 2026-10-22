@@ -267,3 +267,5 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .janela-cliente.recolhida .janela-topo { margin-bottom: 0; }
 .janela-cliente.recolhida .janela-topo [data-novo-para], .janela-cliente.recolhida .janela-topo [data-mudar-cor] { display: none; }
 .janela-cliente.recolhida + .janela-cliente, .janela-cliente.recolhida { padding-top: 14px; padding-bottom: 14px; }
+.marcador-posicao { height: 3px; border-radius: 2px; background: var(--latao); margin: 2px 0 8px; }
+.cartao[draggable] { cursor: grab; }

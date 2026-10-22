@@ -13,6 +13,7 @@ export const HISTORICO = [
       'Filtro por cliente em Atividades e nas duas agendas',
       'Projetos por cliente mostram as tarefas de cada projeto em lista, com botão para criar tarefa no projeto',
       'Em Projetos, cada pessoa pode recolher ou abrir a janela de cada cliente e a lista de tarefas de cada projeto',
+      'No quadro de Atividades, os cartões podem ser arrastados para qualquer posição da coluna; a ordem fica salva para todos',
       'Cor por cliente: escolhida na janela do cliente em Projetos ou na ficha dele, e usada na agenda de postagens e nos cartões',
     ],
   },
