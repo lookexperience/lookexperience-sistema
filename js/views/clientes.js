@@ -1,6 +1,8 @@
 import { pode } from '../permissoes.js';
 import { esc, $, avisar } from '../util.js';
 import { abrirModal } from './modal.js';
+import { abrirProjeto } from './projetos.js';
+import { STATUS_PROJETO, nomeDe } from '../config.js';
 
 export async function render(el, ctx) {
   const { estado } = ctx;
@@ -32,11 +34,25 @@ function abrirCliente(ctx, cliente) {
     corpo: `<form class="grade-campos" id="form-cliente">
       ${campo('nome', 'Nome', 'text', true)}${campo('contato', 'Pessoa de contato')}${campo('telefone', 'Telefone')}${campo('email', 'E-mail', 'email')}${campo('instagram', 'Instagram')}
       <div class="campo inteiro"><label>Observações</label><textarea name="observacoes" ${dis}>${esc(c.observacoes)}</textarea></div></form>
-      ${novo ? '' : `<h3 style="margin-top:22px">Projetos</h3><div class="lista">${projetos.map((p) => `<div class="item" data-projeto="${p.id}"><div class="titulo">${esc(p.nome)}<small>${esc(p.tipo)}</small></div></div>`).join('') || '<p class="fraco">Nenhum projeto ainda.</p>'}</div>`}`,
+      ${novo ? '' : `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px">
+        <h3>Projetos deste cliente</h3>
+        ${pode(s, 'projetos', 'criar') ? '<button class="botao pequeno" id="novo-projeto">+ Novo projeto</button>' : ''}</div>
+        <div class="lista">${projetos.map((p) => {
+          const tarefas = ctx.estado.tarefas.filter((t) => t.projeto_id === p.id);
+          const abertas = tarefas.filter((t) => t.status !== 'feito').length;
+          return `<div class="item" data-projeto="${p.id}"><div class="titulo">${esc(p.nome)}<small>${esc(p.tipo) || 'Sem tipo'} · ${abertas} tarefa${abertas === 1 ? '' : 's'} aberta${abertas === 1 ? '' : 's'}</small></div>
+            <span class="etiqueta">${nomeDe(STATUS_PROJETO, p.status)}</span></div>`;
+        }).join('') || '<p class="fraco">Nenhum projeto ainda.</p>'}</div>`}`,
     rodape: `${!novo && pode(s, 'clientes', 'apagar') ? '<button class="botao perigo" id="apagar">Apagar</button>' : ''}<span class="espaco"></span>
       ${podeSalvar ? '<button class="botao primario" id="salvar">Salvar</button>' : ''}`,
   });
-  el.querySelectorAll('[data-projeto]').forEach((i) => i.addEventListener('click', () => { fechar(); ctx.navegar('projetos'); }));
+  // Projeto aberto ou criado daqui volta para a ficha do cliente atualizada.
+  const reabrir = () => abrirCliente(ctx, ctx.estado.clientes.find((x) => x.id === c.id));
+  el.querySelectorAll('[data-projeto]').forEach((i) => i.addEventListener('click', () => {
+    fechar();
+    abrirProjeto(ctx, ctx.estado.projetos.find((p) => p.id === i.dataset.projeto), '', reabrir);
+  }));
+  $('#novo-projeto', el)?.addEventListener('click', () => { fechar(); abrirProjeto(ctx, null, c.id, reabrir); });
   $('#salvar', el)?.addEventListener('click', async () => {
     const form = $('#form-cliente', el);
     if (!form.reportValidity()) return;

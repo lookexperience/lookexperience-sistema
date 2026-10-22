@@ -52,8 +52,20 @@ export function barraFiltros(ctx) {
     <input type="search" id="f-busca" placeholder="Buscar" value="${esc(filtros.busca)}">
     <select id="f-setor"><option value="">Todos os setores</option>${SETORES.map((s) => `<option value="${s.chave}" ${filtros.setor === s.chave ? 'selected' : ''}>${s.nome}</option>`).join('')}</select>
     <select id="f-responsavel"><option value="">Todas as pessoas</option><option value="eu" ${filtros.responsavel === 'eu' ? 'selected' : ''}>Só as minhas</option>${pessoas.map((p) => `<option value="${p.id}" ${filtros.responsavel === p.id ? 'selected' : ''}>${esc(p.nome)}</option>`).join('')}</select>
-    <select id="f-projeto"><option value="">Todos os projetos</option>${estado.projetos.map((p) => `<option value="${p.id}" ${filtros.projeto === p.id ? 'selected' : ''}>${esc(ctx.cliente(p.cliente_id)?.nome ?? '')} · ${esc(p.nome)}</option>`).join('')}</select>
+    <select id="f-projeto"><option value="">Todos os clientes e projetos</option>${grupoProjetos(ctx)}</select>
   </div>`;
+}
+
+// Opções do filtro: cada cliente vira um grupo com os projetos dele.
+function grupoProjetos(ctx) {
+  const { estado } = ctx;
+  const grupos = [...estado.clientes].sort((a, b) => a.nome.localeCompare(b.nome)).map((c) => [c.id, c.nome]);
+  grupos.push([null, 'Interno']);
+  return grupos.map(([id, nome]) => {
+    const lista = estado.projetos.filter((p) => (p.cliente_id ?? null) === id);
+    if (!lista.length) return '';
+    return `<optgroup label="${esc(nome)}">${lista.map((p) => `<option value="${p.id}" ${filtros.projeto === p.id ? 'selected' : ''}>${esc(p.nome)}</option>`).join('')}</optgroup>`;
+  }).join('');
 }
 
 export function ligarFiltros(raiz, redesenhar) {
