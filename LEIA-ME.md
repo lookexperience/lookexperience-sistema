@@ -2,7 +2,7 @@
 
 Painel online da LOOK para organizar tarefas, calendário, clientes e projetos, com login e permissões por usuário.
 
-**Versão:** 0.1.0 (fase 1). O histórico de mudanças fica em `js/versao.js` e aparece na tela "Sobre o sistema".
+**Versão:** 0.2.0 (fase 1 + ajustes da primeira revisão). O histórico de mudanças fica em `js/versao.js` e aparece na tela "Sobre o sistema".
 
 ## Como está montado
 
@@ -10,21 +10,22 @@ Painel online da LOOK para organizar tarefas, calendário, clientes e projetos, 
 | --- | --- |
 | `index.html`, `css/`, `js/`, `img/`, `fonts/` | As telas. Não precisam de instalação nem de etapa de build: o Netlify publica a pasta como está. |
 | `supabase/schema.sql` | O banco de dados: tabelas, permissões por usuário e as regras de segurança. |
-| `js/config.js` | Onde entram o endereço e a chave pública do Supabase. Vazio = modo demonstração. |
+| `js/config.js` | Endereço e chave pública do Supabase. |
 | `netlify.toml` | Configuração de publicação no Netlify. |
+| `testes/` | Testes automáticos de cada tipo de usuário (banco e telas). Ver `testes/LEIA-ME.md`. |
 
 ## Modo demonstração
 
-Enquanto `js/config.js` estiver sem os dados do Supabase, o sistema abre com dados de exemplo, salvos só no navegador. A faixa dourada no topo deixa ver o sistema como cada usuário de exemplo (administrador, gerente, freelancer, conta sem acesso), para conferir as permissões.
+Aberto no próprio computador (localhost, como nos testes) ou com `?demo` no endereço, o sistema abre com dados de exemplo, salvos só no navegador. A faixa dourada no topo deixa ver o sistema como cada usuário de exemplo (administrador, gerente, freelancer, conta sem acesso), para conferir as permissões.
 
 ## Ligar o banco de verdade (uma vez só)
 
 1. Criar uma conta gratuita em supabase.com e um projeto novo (região São Paulo).
 2. No projeto, abrir **SQL Editor**, colar todo o `supabase/schema.sql` e clicar em **Run**.
-3. Em **Project Settings > API**, copiar a **Project URL** e a chave **anon public** para `js/config.js`.
+3. Em **Project Settings > API**, copiar a **Project URL** e a chave pública (**publishable**, antiga **anon public**) para `js/config.js`.
 4. Publicar. A **primeira conta criada** no sistema vira administrador principal automaticamente.
 
-A chave anon é pública por natureza. Quem protege os dados são as regras do banco (RLS): mesmo que alguém mexa na tela, o banco só entrega o que aquele usuário pode ver.
+A chave pública pode ficar no código. Quem protege os dados são as regras do banco (RLS): mesmo que alguém mexa na tela, o banco só entrega o que aquele usuário pode ver.
 
 ## Permissões
 
@@ -36,7 +37,7 @@ A chave anon é pública por natureza. Quem protege os dados são as regras do b
 
 ## Como fazer atualizações
 
-Toda mudança é feita no código:
+Toda mudança é feita no código, e só vai pro ar com os testes de `testes/` passando:
 
 1. A mudança é feita num ramo separado do repositório no GitHub.
 2. O Netlify gera uma prévia com endereço próprio para conferir.

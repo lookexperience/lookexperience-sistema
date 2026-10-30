@@ -6,7 +6,7 @@ export const modo = 'online';
 let sb = null;
 
 export async function iniciar() {
-  const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm');
+  const { createClient } = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.99.3/+esm');
   sb = createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey);
 }
 

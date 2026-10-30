@@ -14,13 +14,20 @@ export async function abrirTarefa(ctx, tarefa, padrao = {}) {
   const soStatus = !nova && !pode(s, 'tarefas', 'editar') && t.responsavel_id === s.perfil.id;
   const bloqueado = (campo) => (!podeEditar || (soStatus && campo !== 'status') ? 'disabled' : '');
 
-  const pessoas = estado.perfis.filter((p) => p.ativo).map((p) => ({ chave: p.id, nome: p.nome }));
-  const projetos = estado.projetos.map((p) => ({ chave: p.id, nome: `${ctx.cliente(p.cliente_id)?.nome ?? 'Sem cliente'} · ${p.nome}` }));
+  // Pessoas ativas, mais o responsável atual mesmo que desativado (para não sumir ao salvar).
+  const pessoas = estado.perfis.filter((p) => p.ativo || p.id === t.responsavel_id)
+    .map((p) => ({ chave: p.id, nome: p.ativo ? p.nome : `${p.nome} (desativado)` }));
+  // Projetos pertencem a um cliente: escolhe o cliente e depois um dos projetos dele.
+  const clientes = [...estado.clientes].sort((a, b) => a.nome.localeCompare(b.nome)).map((c) => ({ chave: c.id, nome: c.nome }));
+  const clienteAtual = t.cliente_id ?? ctx.projeto(t.projeto_id)?.cliente_id ?? '';
+  const projetosDo = (clienteId) => estado.projetos.filter((p) => (p.cliente_id ?? '') === clienteId && (p.status !== 'concluido' || p.id === t.projeto_id))
+    .map((p) => ({ chave: p.id, nome: p.nome }));
 
   const corpo = `
     <form id="form-tarefa" class="grade-campos">
       <div class="campo inteiro"><label>Título</label><input type="text" name="titulo" required value="${esc(t.titulo)}" ${bloqueado('titulo')}></div>
-      <div class="campo"><label>Projeto</label><select name="projeto_id" ${bloqueado('projeto_id')}>${opcoes(projetos, t.projeto_id, 'Sem projeto (interno)')}</select></div>
+      <div class="campo"><label>Cliente</label><select name="cliente_id" ${bloqueado('projeto_id')}>${opcoes(clientes, clienteAtual, 'Interno (sem cliente)')}</select></div>
+      <div class="campo"><label>Projeto</label><select name="projeto_id" ${bloqueado('projeto_id')}></select><span class="fraco" id="aviso-projeto"></span></div>
       <div class="campo"><label>Responsável</label><select name="responsavel_id" ${bloqueado('responsavel_id')}>${opcoes(pessoas, t.responsavel_id, 'Ninguém ainda')}</select></div>
       <div class="campo"><label>Setor</label><select name="setor" ${bloqueado('setor')}>${opcoes(SETORES, t.setor)}</select></div>
       <div class="campo"><label>Tipo</label><select name="tipo" ${bloqueado('tipo')}>${opcoes(TIPOS, t.tipo)}</select></div>
@@ -28,7 +35,7 @@ export async function abrirTarefa(ctx, tarefa, padrao = {}) {
       <div class="campo"><label>Prioridade</label><select name="prioridade" ${bloqueado('prioridade')}>${opcoes([{ chave: 'normal', nome: 'Normal' }, { chave: 'urgente', nome: 'Urgente' }], t.prioridade)}</select></div>
       <div class="campo"><label>Prazo</label><input type="date" name="prazo" value="${esc(t.prazo ?? '')}" ${bloqueado('prazo')}></div>
       <div class="campo"><label>Compromisso (data e hora)</label><input type="datetime-local" name="inicio" value="${paraCampoDataHora(t.inicio)}" ${bloqueado('inicio')}></div>
-      <div class="campo inteiro"><label>Local</label><input type="text" name="local" value="${esc(t.local ?? '')}" placeholder="Para gravações e reuniões" ${bloqueado('local')}></div>
+      <div class="campo"><label>Local</label><input type="text" name="local" value="${esc(t.local ?? '')}" placeholder="Para gravações e reuniões" ${bloqueado('local')}></div>
       <div class="campo inteiro"><label>Descrição</label><textarea name="descricao" ${bloqueado('descricao')}>${esc(t.descricao ?? '')}</textarea></div>
     </form>
     ${nova ? '' : '<div class="comentarios"><h3>Comentários</h3><div id="lista-comentarios" style="margin-top:14px"></div></div>'}`;
@@ -41,6 +48,20 @@ export async function abrirTarefa(ctx, tarefa, padrao = {}) {
 
   const { el, fechar } = abrirModal({ titulo: nova ? 'Nova tarefa' : 'Tarefa', corpo, rodape, largo: true });
   $('[data-fechar-rodape]', el).onclick = fechar;
+
+  const seletorCliente = $('[name=cliente_id]', el);
+  const seletorProjeto = $('[name=projeto_id]', el);
+  const atualizarProjetos = () => {
+    const lista = projetosDo(seletorCliente.value);
+    const escolhido = lista.some((p) => p.chave === seletorProjeto.value) ? seletorProjeto.value : t.projeto_id;
+    const interno = !seletorCliente.value;
+    seletorProjeto.innerHTML = opcoes(lista, escolhido, interno ? 'Sem projeto' : 'Escolha o projeto');
+    seletorProjeto.required = !interno;
+    if (!interno && lista.length === 1 && !seletorProjeto.value) seletorProjeto.value = lista[0].chave;
+    $('#aviso-projeto', el).textContent = !interno && !lista.length ? 'Este cliente ainda não tem projeto. Crie um na ficha do cliente.' : '';
+  };
+  seletorCliente.addEventListener('change', atualizarProjetos);
+  atualizarProjetos();
 
   $('#salvar-tarefa', el)?.addEventListener('click', async () => {
     const form = $('#form-tarefa', el);

@@ -1,11 +1,11 @@
 // Modo demonstração: guarda tudo neste navegador e imita as regras do
 // banco, para dar para testar o sistema antes do Supabase estar ligado.
 import { MODULOS } from './config.js';
-import { pode, podeVerTarefa, podeEditarTarefa } from './permissoes.js';
+import { pode, podeVerTarefa, podeEditarTarefa, temAlgumAcesso } from './permissoes.js';
 import { chaveDia } from './util.js';
 
 export const modo = 'demo';
-const CHAVE = 'look-sistema-demo-v1';
+const CHAVE = 'look-sistema-demo-v4';
 let banco = null;
 let usuarioAtual = null;
 
@@ -36,6 +36,7 @@ function semente() {
     { id: marina, nome: 'Marina Exemplo', email: 'marina@exemplo.com', cargo: 'Gerente de criação', setores: ['criacao', 'execucao'], admin: false, ativo: true, criado_em: agora },
     { id: rafa, nome: 'Rafa Exemplo', email: 'rafa@exemplo.com', cargo: 'Editor de vídeo (freelancer)', setores: ['execucao'], admin: false, ativo: true, criado_em: agora },
     { id: novo, nome: 'Conta Nova', email: 'nova@exemplo.com', cargo: '', setores: [], admin: false, ativo: true, criado_em: agora },
+    { id: 'u-saiu', nome: 'Ex Funcionário', email: 'saiu@exemplo.com', cargo: 'Conta desativada', setores: ['criacao'], admin: false, ativo: false, criado_em: agora },
   ];
   const permissoes = [
     permissao(marina, 'visao_geral', true, false, false, false),
@@ -44,13 +45,14 @@ function semente() {
     permissao(marina, 'projetos', true, true, true, false),
     permissao(rafa, 'visao_geral', true, false, false, false),
     permissao(rafa, 'tarefas', true, false, false, false, 'proprias'),
+    permissao('u-saiu', 'tarefas', true, true, true, true, 'todas'),
   ];
   const c = (id, nome, contato, extra = {}) => ({ id, nome, contato, email: '', telefone: '', instagram: '', observacoes: '', criado_por: pablo, criado_em: agora, ...extra });
   const clientes = [
-    c('c-lotus', 'Lotus Games', 'Responsável da loja', { instagram: '@lotusgames' }),
-    c('c-flambe', 'Flambé', 'Sócios', { observacoes: 'Restaurante de esfihas e vinhos. Paleta proposta: Bordeaux, Creme, Carvão.' }),
-    c('c-fusion', 'Fusion Soldas', ''),
-    c('c-ketlin', 'Ketlin Joias', 'Ketlin'),
+    c('c-lotus', 'Lotus Games', 'Responsável da loja', { instagram: '@lotusgames', cor: '#4F7FB8' }),
+    c('c-flambe', 'Flambé', 'Sócios', { cor: '#C2574A', observacoes: 'Restaurante de esfihas e vinhos. Paleta proposta: Bordeaux, Creme, Carvão.' }),
+    c('c-fusion', 'Fusion Soldas', '', { cor: '#D08C3C' }),
+    c('c-ketlin', 'Ketlin Joias', 'Ketlin', { cor: '#B5638F' }),
   ];
   const p = (id, cliente_id, nome, tipo, inicio, fim) => ({ id, cliente_id, nome, tipo, status: 'ativo', inicio, fim, descricao: '', criado_por: pablo, criado_em: agora });
   const projetos = [
@@ -77,6 +79,11 @@ function semente() {
     t('Reunião com a Valter Vidros', { tipo: 'reuniao', setor: 'comercial', inicio: horaRelativa(3, 10) }),
     t('Contato com a Gelateria Perino', { setor: 'comercial', prazo: diaRelativo(7) }),
     t('Moodboard Ketlin Joias', { projeto_id: 'p-ketlin', setor: 'criacao', responsavel_id: marina, prazo: diaRelativo(8) }),
+    t('Post: bastidores do rebranding', { projeto_id: 'p-lotus', tipo: 'post', setor: 'criacao', inicio: horaRelativa(2, 18), responsavel_id: marina }),
+    t('Reels: unboxing de cartas raras', { projeto_id: 'p-lotus', tipo: 'post', setor: 'criacao', inicio: horaRelativa(5, 19), responsavel_id: marina }),
+    t('Carrossel: torneio de sábado', { projeto_id: 'p-lotus', tipo: 'post', setor: 'criacao', inicio: horaRelativa(9, 12), responsavel_id: marina }),
+    t('Post: harmonização esfiha e vinho', { projeto_id: 'p-flambe', tipo: 'post', setor: 'criacao', inicio: horaRelativa(4, 11) }),
+    t('Stories: menu da semana', { projeto_id: 'p-flambe', tipo: 'post', setor: 'criacao', inicio: horaRelativa(8, 17) }),
     t('Site da LOOK no ar com HTTPS', { setor: 'execucao', status: 'feito', prazo: diaRelativo(-1) }),
   ];
   const comentarios = [
@@ -121,7 +128,7 @@ function visivel(tabela, linha, s) {
   const eu = s.perfil.id;
   const tarefaVisivel = (t) => podeVerTarefa(s, t);
   switch (tabela) {
-    case 'perfis': return linha.id === eu || s.perfil.ativo;
+    case 'perfis': return linha.id === eu || temAlgumAcesso(s);
     case 'permissoes': return linha.usuario_id === eu || s.perfil.admin;
     case 'tarefas': return tarefaVisivel(linha);
     case 'projetos': return pode(s, 'projetos', 'ver') || banco.tarefas.some((t) => t.projeto_id === linha.id && tarefaVisivel(t));
@@ -177,6 +184,11 @@ export async function atualizar(tabela, id, mudancas) {
   if (!linha || !visivel(tabela, linha, s)) negar();
   if (tabela === 'tarefas') {
     if (!podeEditarTarefa(s, linha)) negar();
+    // Igual ao banco: sem "editar", só status e posição mudam; o autor nunca muda.
+    if (!pode(s, 'tarefas', 'editar')) {
+      mudancas = Object.fromEntries(Object.entries(mudancas).filter(([k]) => k === 'status' || k === 'ordem'));
+    }
+    delete mudancas.criado_por;
     const novoResp = mudancas.responsavel_id;
     if (novoResp && novoResp !== linha.responsavel_id && novoResp !== s.perfil.id) avisar(novoResp, `Nova tarefa para você: ${mudancas.titulo ?? linha.titulo}`, id);
     mudancas = { ...mudancas, atualizado_em: new Date().toISOString() };
@@ -186,6 +198,10 @@ export async function atualizar(tabela, id, mudancas) {
     if (!s.perfil.admin) {
       if (id !== s.perfil.id) negar();
       mudancas = { nome: mudancas.nome ?? linha.nome };
+    }
+    const perdeAdmin = linha.admin && linha.ativo && (mudancas.admin === false || mudancas.ativo === false);
+    if (perdeAdmin && !banco.perfis.some((p) => p.id !== id && p.admin && p.ativo)) {
+      throw new Error('O sistema precisa de pelo menos um administrador ativo.');
     }
   } else if (tabela !== 'avisos') negar();
   Object.assign(linha, mudancas);
@@ -209,6 +225,9 @@ export async function apagar(tabela, id) {
   banco[tabela] = banco[tabela].filter((l) => l.id !== id);
   if (tabela === 'tarefas') banco.comentarios = banco.comentarios.filter((c) => c.tarefa_id !== id);
   if (tabela === 'perfis') banco.permissoes = banco.permissoes.filter((p) => p.usuario_id !== id);
+  // Igual ao banco: projeto sem cliente e tarefa sem projeto continuam existindo.
+  if (tabela === 'clientes') banco.projetos.forEach((p) => { if (p.cliente_id === id) p.cliente_id = null; });
+  if (tabela === 'projetos') banco.tarefas.forEach((t) => { if (t.projeto_id === id) t.projeto_id = null; });
   salvar();
 }
 

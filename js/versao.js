@@ -2,6 +2,25 @@
 // entrada no topo desta lista; a tela "Sobre o sistema" mostra tudo.
 export const HISTORICO = [
   {
+    versao: '0.2.0',
+    data: '2026-10-22',
+    titulo: 'Ajustes da primeira revisão',
+    itens: [
+      'Projetos ligados ao cliente: na tarefa, escolhe-se o cliente e depois um dos projetos dele',
+      'Ficha do cliente mostra os projetos dele e cria projeto novo ali mesmo',
+      'Tela Projetos agrupada por cliente; filtros de Atividades e Calendário agrupados por cliente',
+      'Calendário com duas abas: Agenda da equipe e Agenda de postagens',
+      'Filtro por cliente em Atividades e nas duas agendas',
+      'Projetos por cliente mostram as tarefas de cada projeto em lista, com botão para criar tarefa no projeto',
+      'Em Projetos, cada pessoa pode recolher ou abrir a janela de cada cliente e a lista de tarefas de cada projeto',
+      'No quadro de Atividades, os cartões podem ser arrastados para qualquer posição da coluna; a ordem fica salva para todos',
+      'Revisão completa com testes automáticos de cada tipo de usuário (59 no banco, 54 nas telas)',
+      'Segurança: o sistema nunca fica sem administrador; autor de tarefa, cliente e projeto não pode ser trocado; quem não tem "editar" só muda status e posição; conta ainda não liberada não vê a equipe',
+      'Correções: marcar e desmarcar "Administrador" não libera mais tudo sem querer; conta desativada vê aviso próprio; responsável desativado não some da tarefa; filtros zeram ao trocar de usuário; tabelas cabem no celular',
+      'Cor por cliente: escolhida na janela do cliente em Projetos ou na ficha dele, e usada na agenda de postagens e nos cartões',
+    ],
+  },
+  {
     versao: '0.1.0',
     data: '2026-10-21',
     titulo: 'Fase 1: a base',
