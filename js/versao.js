@@ -2,6 +2,17 @@
 // entrada no topo desta lista; a tela "Sobre o sistema" mostra tudo.
 export const HISTORICO = [
   {
+    versao: '0.2.1',
+    data: '2026-10-30',
+    titulo: 'Sistema no ar',
+    itens: [
+      'Ligado ao banco Supabase, em sistema.lookexperience.com.br',
+      'Depois de criar conta, a tela volta para o login com o aviso do e-mail de confirmação',
+      'Botão de cadastro e de entrada travado enquanto envia, para não mandar duas vezes',
+      'Mensagens do login traduzidas (espera de segurança, muitas tentativas, sem conexão)',
+    ],
+  },
+  {
     versao: '0.2.0',
     data: '2026-10-22',
     titulo: 'Ajustes da primeira revisão',
