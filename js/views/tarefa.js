@@ -14,7 +14,9 @@ export async function abrirTarefa(ctx, tarefa, padrao = {}) {
   const soStatus = !nova && !pode(s, 'tarefas', 'editar') && t.responsavel_id === s.perfil.id;
   const bloqueado = (campo) => (!podeEditar || (soStatus && campo !== 'status') ? 'disabled' : '');
 
-  const pessoas = estado.perfis.filter((p) => p.ativo).map((p) => ({ chave: p.id, nome: p.nome }));
+  // Pessoas ativas, mais o responsável atual mesmo que desativado (para não sumir ao salvar).
+  const pessoas = estado.perfis.filter((p) => p.ativo || p.id === t.responsavel_id)
+    .map((p) => ({ chave: p.id, nome: p.ativo ? p.nome : `${p.nome} (desativado)` }));
   // Projetos pertencem a um cliente: escolhe o cliente e depois um dos projetos dele.
   const clientes = [...estado.clientes].sort((a, b) => a.nome.localeCompare(b.nome)).map((c) => ({ chave: c.id, nome: c.nome }));
   const clienteAtual = t.cliente_id ?? ctx.projeto(t.projeto_id)?.cliente_id ?? '';

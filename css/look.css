@@ -269,3 +269,11 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .janela-cliente.recolhida + .janela-cliente, .janela-cliente.recolhida { padding-top: 14px; padding-bottom: 14px; }
 .marcador-posicao { height: 3px; border-radius: 2px; background: var(--latao); margin: 2px 0 8px; }
 .cartao[draggable] { cursor: grab; }
+
+/* Tabelas largas rolam dentro do próprio painel em telas estreitas. */
+.painel:has(> .tabela), .janela-cliente { overflow-x: auto; }
+@media (max-width: 760px) {
+  .tabela { min-width: 640px; }
+  .cabecalho > div:last-child { flex-wrap: wrap; }
+  h1 { font-size: 28px; }
+}

@@ -19,6 +19,8 @@ export async function render(el, ctx) {
   const resumo = (p) => {
     if (!p.ativo) return '<span class="etiqueta urgente">Desativado</span>';
     if (p.admin) return '<span class="etiqueta" style="color:var(--latao);border-color:var(--latao)">Administrador</span>';
+    // Só o administrador enxerga as permissões dos outros.
+    if (!souAdmin && p.id !== estado.sessao.perfil.id) return '<span class="fraco">—</span>';
     const n = todas.filter((x) => x.usuario_id === p.id && x.ver).length;
     return n ? `<span class="etiqueta">${n} módulo${n > 1 ? 's' : ''}</span>` : '<span class="etiqueta">Aguardando liberação</span>';
   };
@@ -69,7 +71,7 @@ function abrirPessoa(ctx, pessoa, todas) {
     </form>
     <h3 style="margin:22px 0 8px">Permissões</h3>
     ${souAdmin ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px"><span class="fraco" style="align-self:center">Preencher como:</span>${Object.keys(PERFIS_PRONTOS).map((n) => `<button class="botao pequeno" data-pronto="${n}">${n}</button>`).join('')}</div>` : ''}
-    <div id="matriz">${matriz(permissoes, pessoa.admin, !souAdmin)}</div>
+    <div id="matriz">${souAdmin || souEu ? matriz(permissoes, pessoa.admin, !souAdmin) : '<p class="fraco">Só o administrador vê as permissões de outras pessoas.</p>'}</div>
     <p class="fraco">Administrador vê e pode tudo. Módulos das próximas fases já podem ser liberados; passam a valer quando as telas chegarem.</p>`,
     rodape: souAdmin ? '<span class="fraco">Para tirar alguém do sistema, desmarque "Conta ativa".</span><span class="espaco"></span><button class="botao primario" id="salvar">Salvar</button>' : '',
   });
@@ -85,8 +87,11 @@ function abrirPessoa(ctx, pessoa, todas) {
     });
   }));
 
+  // Marcar "Administrador" mostra tudo liberado; desmarcar volta às permissões de antes.
+  let antesDeAdmin = permissoes;
   $('#form-pessoa [name=admin]', el)?.addEventListener('change', (e) => {
-    $('#matriz', el).innerHTML = matriz(lerMatriz(el), e.target.checked, false);
+    if (e.target.checked) antesDeAdmin = lerMatriz(el);
+    $('#matriz', el).innerHTML = matriz(antesDeAdmin, e.target.checked, false);
   });
 
   $('#salvar', el)?.addEventListener('click', async () => {

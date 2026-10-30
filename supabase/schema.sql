@@ -167,6 +167,13 @@ language sql stable security definer set search_path = public as $$
   ), false));
 $$;
 
+-- Tem alguma permissão liberada (ou é admin). Conta nova ainda não tem.
+create or replace function public.tem_acesso() returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.eh_admin() or (public.esta_ativo()
+    and exists (select 1 from permissoes where usuario_id = auth.uid() and ver));
+$$;
+
 create or replace function public.escopo_tarefas() returns text
 language sql stable security definer set search_path = public as $$
   select case when public.eh_admin() then 'todas'
@@ -234,9 +241,66 @@ drop trigger if exists proteger_perfil on public.perfis;
 create trigger proteger_perfil before update on public.perfis
   for each row execute function public.proteger_perfil();
 
+-- O sistema nunca fica sem administrador: o último admin ativo não pode
+-- perder o acesso de admin, ser desativado nem removido.
+create or replace function public.manter_um_admin() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if old.admin and old.ativo
+     and (tg_op = 'DELETE' or not new.admin or not new.ativo)
+     and not exists (select 1 from perfis where admin and ativo and id <> old.id) then
+    raise exception 'O sistema precisa de pelo menos um administrador ativo.';
+  end if;
+  return case when tg_op = 'DELETE' then old else new end;
+end $$;
+
+drop trigger if exists manter_um_admin on public.perfis;
+create trigger manter_um_admin before update or delete on public.perfis
+  for each row execute function public.manter_um_admin();
+
 create or replace function public.marcar_atualizacao() returns trigger
 language plpgsql as $$
 begin new.atualizado_em := now(); return new; end $$;
+
+-- Autor da tarefa é sempre quem criou. Quem não tem "editar" (por exemplo,
+-- o responsável freelancer) só muda o status e a posição no quadro.
+create or replace function public.proteger_tarefa() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    if auth.uid() is not null then new.criado_por := auth.uid(); end if;
+    return new;
+  end if;
+  new.criado_por := old.criado_por;
+  new.criado_em := old.criado_em;
+  if auth.uid() is not null and not public.pode('tarefas', 'editar') then
+    new := jsonb_populate_record(old, jsonb_build_object('status', new.status, 'ordem', new.ordem));
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists proteger_tarefa on public.tarefas;
+create trigger proteger_tarefa before insert or update on public.tarefas
+  for each row execute function public.proteger_tarefa();
+
+-- Clientes e projetos também ficam no nome de quem criou.
+create or replace function public.fixar_autor() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    if auth.uid() is not null then new.criado_por := auth.uid(); end if;
+  else
+    new.criado_por := old.criado_por; new.criado_em := old.criado_em;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists fixar_autor on public.clientes;
+create trigger fixar_autor before insert or update on public.clientes
+  for each row execute function public.fixar_autor();
+drop trigger if exists fixar_autor on public.projetos;
+create trigger fixar_autor before insert or update on public.projetos
+  for each row execute function public.fixar_autor();
 
 drop trigger if exists marcar_atualizacao on public.tarefas;
 create trigger marcar_atualizacao before update on public.tarefas
@@ -308,9 +372,10 @@ end $$;
 -- Módulos: qualquer pessoa logada lê o catálogo.
 create policy modulos_ler on public.modulos for select to authenticated using (true);
 
--- Perfis: quem está ativo vê os nomes da equipe (para atribuir tarefas).
+-- Perfis: quem já foi liberado vê os nomes da equipe (para atribuir
+-- tarefas). Conta nova ou desativada vê só o próprio perfil.
 create policy perfis_ler on public.perfis for select to authenticated
-  using (id = auth.uid() or public.esta_ativo());
+  using (id = auth.uid() or public.tem_acesso());
 create policy perfis_editar on public.perfis for update to authenticated
   using (id = auth.uid() or public.eh_admin());
 create policy perfis_apagar on public.perfis for delete to authenticated

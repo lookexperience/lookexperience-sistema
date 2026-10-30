@@ -2,7 +2,7 @@
 
 Painel online da LOOK para organizar tarefas, calendário, clientes e projetos, com login e permissões por usuário.
 
-**Versão:** 0.1.0 (fase 1). O histórico de mudanças fica em `js/versao.js` e aparece na tela "Sobre o sistema".
+**Versão:** 0.2.0 (fase 1 + ajustes da primeira revisão). O histórico de mudanças fica em `js/versao.js` e aparece na tela "Sobre o sistema".
 
 ## Como está montado
 
@@ -12,6 +12,7 @@ Painel online da LOOK para organizar tarefas, calendário, clientes e projetos, 
 | `supabase/schema.sql` | O banco de dados: tabelas, permissões por usuário e as regras de segurança. |
 | `js/config.js` | Onde entram o endereço e a chave pública do Supabase. Vazio = modo demonstração. |
 | `netlify.toml` | Configuração de publicação no Netlify. |
+| `testes/` | Testes automáticos de cada tipo de usuário (banco e telas). Ver `testes/LEIA-ME.md`. |
 
 ## Modo demonstração
 
@@ -36,7 +37,7 @@ A chave anon é pública por natureza. Quem protege os dados são as regras do b
 
 ## Como fazer atualizações
 
-Toda mudança é feita no código:
+Toda mudança é feita no código, e só vai pro ar com os testes de `testes/` passando:
 
 1. A mudança é feita num ramo separado do repositório no GitHub.
 2. O Netlify gera uma prévia com endereço próprio para conferir.

@@ -4,6 +4,7 @@ import { VERSAO } from './versao.js';
 import { pode, temAlgumAcesso } from './permissoes.js';
 import { esc, $, $$, ICONES, iniciais, dataCurta, avisar } from './util.js';
 import { abrirTarefa } from './views/tarefa.js';
+import { filtros } from './views/comum.js';
 import * as visaoGeral from './views/visao-geral.js';
 import * as atividades from './views/atividades.js';
 import * as calendario from './views/calendario.js';
@@ -162,8 +163,11 @@ function desenharSemAcesso() {
   raiz.innerHTML = `${faixaDemo()}
     <div class="entrada"><div class="caixa" style="text-align:center">
       <img src="img/logo-horizontal-branca.png" alt="LOOK">
-      <h2>Aguardando liberação</h2>
-      <p class="mudo">Sua conta foi criada, ${esc(estado.sessao.perfil.nome.split(' ')[0])}. O administrador precisa liberar o que você pode ver no sistema. Assim que liberar, é só recarregar esta página.</p>
+      ${estado.sessao.perfil.ativo
+        ? `<h2>Aguardando liberação</h2>
+      <p class="mudo">Sua conta foi criada, ${esc(estado.sessao.perfil.nome.split(' ')[0])}. O administrador precisa liberar o que você pode ver no sistema. Assim que liberar, é só recarregar esta página.</p>`
+        : `<h2>Conta desativada</h2>
+      <p class="mudo">Esta conta não tem mais acesso ao sistema. Se for engano, fale com o administrador.</p>`}
       ${db.modo === 'demo' ? '' : '<button class="botao" id="sair">Sair</button>'}
     </div></div>`;
   $('#usuario-demo')?.addEventListener('change', async (e) => { db.trocarUsuario(e.target.value); await iniciarApp(); });
@@ -187,6 +191,8 @@ async function desenharPagina() {
 }
 
 async function iniciarApp() {
+  // Filtros são de quem está usando: limpa ao entrar ou trocar de usuário.
+  Object.keys(filtros).forEach((k) => { filtros[k] = ''; });
   await carregar();
   if (!estado.sessao) return desenharEntrada();
   if (!temAlgumAcesso(estado.sessao)) return desenharSemAcesso();
