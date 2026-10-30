@@ -1,0 +1,32 @@
+# Cópia de segurança semanal do banco (tabelas do sistema, com os dados).
+# Fica guardada por 90 dias na aba Actions do GitHub, em "Artifacts".
+# Precisa do segredo SUPABASE_DB_URL (Settings > Secrets and variables >
+# Actions), com o endereço "Session pooler" do Supabase e a senha do banco.
+name: Backup do banco
+on:
+  schedule:
+    - cron: '41 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Copiar o banco
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if [ -z "$SUPABASE_DB_URL" ]; then
+            echo "::error::Falta o segredo SUPABASE_DB_URL. Veja as instruções no topo deste arquivo."
+            exit 1
+          fi
+          mkdir backup
+          docker run --rm -e SUPABASE_DB_URL postgres:17 \
+            sh -c 'pg_dump "$SUPABASE_DB_URL" --schema=public --no-owner --no-privileges' > backup/look-sistema.sql
+          test -s backup/look-sistema.sql
+          ls -lh backup
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backup-${{ github.run_number }}
+          path: backup/
+          retention-days: 90

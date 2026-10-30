@@ -1,0 +1,42 @@
+# Roda todos os testes (banco e telas) em cada pull request e em cada
+# mudança no main. Atualização só entra no ar com tudo OK.
+name: Testes
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  banco:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: teste
+        ports: ['5432:5432']
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGPASSWORD: teste
+    steps:
+      - uses: actions/checkout@v4
+      - name: Testes do banco (permissões e ataques)
+        run: |
+          ./testes/rodar-banco.sh | tee resultado.txt
+          ! grep -q FALHOU resultado.txt
+
+  telas:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Instalar o navegador de testes
+        run: |
+          npm install --no-save --no-package-lock playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Testes das telas (cada tipo de usuário e ataques)
+        run: node testes/telas.mjs

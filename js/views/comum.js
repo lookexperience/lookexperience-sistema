@@ -9,7 +9,8 @@ export function nomeClienteDaTarefa(ctx, t) {
   return `${ctx.cliente(projeto.cliente_id)?.nome ?? 'Sem cliente'} · ${projeto.nome}`;
 }
 
-export const corCliente = (cliente) => cliente?.cor || COR_PADRAO;
+// Só aceita cor no formato #RRGGBB: a cor vai direto num atributo style.
+export const corCliente = (cliente) => (/^#[0-9a-f]{6}$/i.test(cliente?.cor ?? '') ? cliente.cor : COR_PADRAO);
 export const corDaTarefa = (ctx, t) => corCliente(ctx.cliente(ctx.projeto(t.projeto_id)?.cliente_id));
 
 // Paleta de cores clicável. "nome" identifica o grupo de botões.

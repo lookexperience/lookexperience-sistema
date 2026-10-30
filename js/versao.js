@@ -4,8 +4,15 @@ export const HISTORICO = [
   {
     versao: '0.2.1',
     data: '2026-10-30',
-    titulo: 'Sistema no ar',
+    titulo: 'Sistema no ar e revisão de segurança',
     itens: [
+      'Corrigida falha grave: nome de pessoa ou cliente com código escondido podia rodar esse código na tela de quem abrisse uma tarefa',
+      'Cor do cliente só aceita o formato #RRGGBB, no banco e na tela',
+      'Política de segurança do site (CSP): o navegador só roda scripts do próprio sistema',
+      'Banco: limites de tamanho nos textos, visitante sem login não acessa tabelas nem funções',
+      'Só o administrador muda o nome das pessoas, e marcação com @ só avisa quem pode ver a tarefa',
+      'Conta desativada não lê mais os avisos antigos',
+      'Robô que impede o Supabase grátis de pausar, backup semanal e testes automáticos a cada atualização',
       'Ligado ao banco Supabase, em sistema.lookexperience.com.br',
       'Depois de criar conta, a tela volta para o login com o aviso do e-mail de confirmação',
       'Botão de cadastro e de entrada travado enquanto envia, para não mandar duas vezes',

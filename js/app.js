@@ -65,7 +65,7 @@ function desenharEntrada(modoCriar = false, aviso = '') {
       <img src="img/logo-horizontal-branca.png" alt="LOOK Direção de Marca & Conteúdo">
       <form id="form-entrada">
         <h2>${modoCriar ? 'Criar conta' : 'Entrar no sistema'}</h2>
-        ${modoCriar ? '<div class="campo"><label>Nome completo</label><input type="text" name="nome" required autocomplete="name"></div>' : ''}
+        ${modoCriar ? '<div class="campo"><label>Nome completo</label><input type="text" name="nome" maxlength="120" required autocomplete="name"></div>' : ''}
         <div class="campo"><label>E-mail</label><input type="email" name="email" required autocomplete="email"></div>
         <div class="campo"><label>Senha</label><input type="password" name="senha" required minlength="6" autocomplete="${modoCriar ? 'new-password' : 'current-password'}"></div>
         ${aviso ? `<div class="aviso-entrada">${esc(aviso)}</div>` : ''}
