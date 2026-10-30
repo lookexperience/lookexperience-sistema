@@ -1,13 +1,16 @@
 // Configuração do sistema.
-// Enquanto supabaseUrl estiver vazio, o sistema roda em MODO DEMONSTRAÇÃO:
-// os dados ficam só neste navegador, com usuários de exemplo.
-// Para ligar o banco de verdade, cole aqui a URL e a chave "anon public"
-// do projeto no Supabase (Project Settings > API). A chave anon é pública
-// por natureza: quem protege os dados são as regras do banco (schema.sql).
+// URL e chave pública (publishable) do projeto no Supabase (Project Settings > API Keys).
+// A chave pública pode ficar no código: quem protege os dados são as regras do banco (schema.sql).
+// O sistema roda em MODO DEMONSTRAÇÃO (dados só neste navegador, com usuários de exemplo)
+// quando aberto no próprio computador (localhost, usado pelos testes) ou com ?demo no endereço.
 export const CONFIG = {
-  supabaseUrl: '',
-  supabaseAnonKey: '',
+  supabaseUrl: 'https://xylbjuooxdfthuxluxsx.supabase.co',
+  supabaseAnonKey: 'sb_publishable_ALDizIBHX6mlmgqSpx2r0g_AHAcvuV-',
 };
+
+export const MODO_DEMO = !CONFIG.supabaseUrl
+  || ['localhost', '127.0.0.1'].includes(location.hostname)
+  || new URLSearchParams(location.search).has('demo');
 
 export const SETORES = [
   { chave: 'comercial', nome: 'Comercial' },
