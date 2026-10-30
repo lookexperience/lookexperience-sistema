@@ -1,4 +1,4 @@
-import { $, ICONES } from '../util.js';
+import { $, ICONES, esc } from '../util.js';
 
 // Abre uma janela por cima da tela. Devolve o elemento e uma função para fechar.
 export function abrirModal({ titulo, corpo, rodape = '', largo = false }) {
@@ -21,4 +21,4 @@ export function abrirModal({ titulo, corpo, rodape = '', largo = false }) {
 
 export const opcoes = (lista, atual, vazio) =>
   (vazio !== undefined ? `<option value="">${vazio}</option>` : '')
-  + lista.map((i) => `<option value="${i.chave}" ${i.chave === atual ? 'selected' : ''}>${i.nome}</option>`).join('');
+  + lista.map((i) => `<option value="${esc(i.chave)}" ${i.chave === atual ? 'selected' : ''}>${esc(i.nome)}</option>`).join('');

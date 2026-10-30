@@ -59,15 +59,16 @@ function rotaAtual() {
 }
 
 // ---------- Entrada (login) ----------
-function desenharEntrada(modoCriar = false) {
+function desenharEntrada(modoCriar = false, aviso = '') {
   raiz.innerHTML = `
     <div class="entrada"><div class="caixa">
       <img src="img/logo-horizontal-branca.png" alt="LOOK Direção de Marca & Conteúdo">
       <form id="form-entrada">
         <h2>${modoCriar ? 'Criar conta' : 'Entrar no sistema'}</h2>
-        ${modoCriar ? '<div class="campo"><label>Nome completo</label><input type="text" name="nome" required autocomplete="name"></div>' : ''}
+        ${modoCriar ? '<div class="campo"><label>Nome completo</label><input type="text" name="nome" maxlength="120" required autocomplete="name"></div>' : ''}
         <div class="campo"><label>E-mail</label><input type="email" name="email" required autocomplete="email"></div>
         <div class="campo"><label>Senha</label><input type="password" name="senha" required minlength="6" autocomplete="${modoCriar ? 'new-password' : 'current-password'}"></div>
+        ${aviso ? `<div class="aviso-entrada">${esc(aviso)}</div>` : ''}
         <div class="erro" id="erro-entrada"></div>
         <button class="botao primario" type="submit">${modoCriar ? 'Criar conta' : 'Entrar'}</button>
       </form>
@@ -78,20 +79,21 @@ function desenharEntrada(modoCriar = false) {
     e.preventDefault();
     const f = new FormData(e.target);
     const erro = $('#erro-entrada');
+    const botao = e.target.querySelector('button[type=submit]');
     erro.textContent = '';
+    botao.disabled = true; // evita mandar o cadastro duas vezes
     try {
       if (modoCriar) {
         const r = await db.criarConta(f.get('nome').trim(), f.get('email').trim(), f.get('senha'));
         if (r?.precisaConfirmar) {
-          erro.style.color = 'var(--latao)';
-          erro.textContent = 'Conta criada. Abra o e-mail de confirmação que enviamos e depois entre aqui.';
+          desenharEntrada(false, 'Conta criada. Enviamos um link de confirmação para o seu e-mail: clique nele e depois entre aqui.');
           return;
         }
       } else {
         await db.entrar(f.get('email').trim(), f.get('senha'));
       }
       await iniciarApp();
-    } catch (err) { erro.textContent = err.message; }
+    } catch (err) { erro.textContent = err.message; botao.disabled = false; }
   };
 }
 

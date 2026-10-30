@@ -62,8 +62,8 @@ function abrirPessoa(ctx, pessoa, todas) {
     titulo: esc(pessoa.nome),
     largo: true,
     corpo: `<form class="grade-campos" id="form-pessoa">
-      <div class="campo"><label>Nome</label><input type="text" name="nome" value="${esc(pessoa.nome)}" ${dis}></div>
-      <div class="campo"><label>Cargo</label><input type="text" name="cargo" value="${esc(pessoa.cargo)}" placeholder="Gerente, designer, editor..." ${dis}></div>
+      <div class="campo"><label>Nome</label><input type="text" name="nome" maxlength="120" value="${esc(pessoa.nome)}" ${dis}></div>
+      <div class="campo"><label>Cargo</label><input type="text" name="cargo" maxlength="120" value="${esc(pessoa.cargo)}" placeholder="Gerente, designer, editor..." ${dis}></div>
       <div class="campo"><label>Setores</label><div style="display:flex;gap:16px;padding:8px 0">${SETORES.map((s) => `<label style="display:flex;gap:6px;align-items:center"><input type="checkbox" name="setor" value="${s.chave}" ${pessoa.setores.includes(s.chave) ? 'checked' : ''} ${dis}> ${s.nome}</label>`).join('')}</div></div>
       <div class="campo"><label>Situação</label><div style="display:flex;gap:16px;padding:8px 0">
         <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" name="ativo" ${pessoa.ativo ? 'checked' : ''} ${dis} ${souEu ? 'disabled' : ''}> Conta ativa</label>

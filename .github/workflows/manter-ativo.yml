@@ -1,0 +1,17 @@
+# O Supabase grátis pausa o banco depois de 7 dias sem uso. Este robô dá
+# um "oi" no banco a cada 2 dias para ele nunca pausar.
+name: Manter o banco ativo
+on:
+  schedule:
+    - cron: '17 11 */2 * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Chamar o banco
+        run: |
+          curl -fsS -X POST "https://xylbjuooxdfthuxluxsx.supabase.co/rest/v1/rpc/ping" \
+            -H "apikey: sb_publishable_ALDizIBHX6mlmgqSpx2r0g_AHAcvuV-" \
+            -H "Content-Type: application/json" -d '{}'
