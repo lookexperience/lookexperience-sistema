@@ -2,10 +2,45 @@
 [build]
   publish = "."
 
+# Cabeçalhos de segurança enviados com todas as páginas.
+# Content-Security-Policy: o navegador só roda scripts deste site e da biblioteca
+# do Supabase (cdn.jsdelivr.net), e só conversa com o banco da LOOK. Mesmo que
+# algum texto malicioso escape para a tela, o código dele não roda.
 [[headers]]
   for = "/*"
   [headers.values]
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://xylbjuooxdfthuxluxsx.supabase.co wss://xylbjuooxdfthuxluxsx.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+    Strict-Transport-Security = "max-age=31536000"
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=()"
     X-Robots-Tag = "noindex, nofollow"
+
+# Arquivos de trabalho (banco, testes, robôs, documentação) não são páginas
+# do sistema: o site responde "não encontrado" para eles.
+[[redirects]]
+  from = "/supabase/*"
+  to = "/404"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/testes/*"
+  to = "/404"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/.github/*"
+  to = "/404"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/LEIA-ME.md"
+  to = "/404"
+  status = 404
+  force = true
+[[redirects]]
+  from = "/netlify.toml"
+  to = "/404"
+  status = 404
+  force = true

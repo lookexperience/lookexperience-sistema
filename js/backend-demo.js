@@ -109,8 +109,12 @@ export const usuarioDemo = () => usuarioAtual;
 export function trocarUsuario(id) { usuarioAtual = id; salvar(); }
 
 export async function sessao() {
-  if (!usuarioAtual) return null;
-  const perfil = banco.perfis.find((p) => p.id === usuarioAtual);
+  return sessaoDe(usuarioAtual);
+}
+
+function sessaoDe(id) {
+  if (!id) return null;
+  const perfil = banco.perfis.find((p) => p.id === id);
   if (!perfil) return null;
   const permissoes = {};
   for (const p of banco.permissoes.filter((x) => x.usuario_id === perfil.id)) permissoes[p.modulo] = p;
@@ -168,7 +172,8 @@ export async function inserir(tabela, dados) {
       if (!p.ativo || p.id === eu) continue;
       const primeiro = p.nome.split(' ')[0];
       const marcado = primeiro && linha.texto.toLowerCase().includes(`@${primeiro.toLowerCase()}`);
-      if (marcado || p.id === tarefa.responsavel_id) {
+      // Igual ao banco: só avisa quem pode ver a tarefa (o aviso traz o título).
+      if ((marcado || p.id === tarefa.responsavel_id) && podeVerTarefa(sessaoDe(p.id), tarefa)) {
         avisar(p.id, `${s.perfil.nome} ${marcado ? 'marcou você em' : 'comentou em'}: ${tarefa.titulo}`, tarefa.id);
       }
     }
@@ -197,7 +202,7 @@ export async function atualizar(tabela, id, mudancas) {
   } else if (tabela === 'perfis') {
     if (!s.perfil.admin) {
       if (id !== s.perfil.id) negar();
-      mudancas = { nome: mudancas.nome ?? linha.nome };
+      mudancas = {}; // igual ao banco: só o admin muda nome, cargo, setores e acesso
     }
     const perdeAdmin = linha.admin && linha.ativo && (mudancas.admin === false || mudancas.ativo === false);
     if (perdeAdmin && !banco.perfis.some((p) => p.id !== id && p.admin && p.ativo)) {

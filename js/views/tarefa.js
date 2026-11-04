@@ -25,7 +25,7 @@ export async function abrirTarefa(ctx, tarefa, padrao = {}) {
 
   const corpo = `
     <form id="form-tarefa" class="grade-campos">
-      <div class="campo inteiro"><label>Título</label><input type="text" name="titulo" required value="${esc(t.titulo)}" ${bloqueado('titulo')}></div>
+      <div class="campo inteiro"><label>Título</label><input type="text" name="titulo" maxlength="300" required value="${esc(t.titulo)}" ${bloqueado('titulo')}></div>
       <div class="campo"><label>Cliente</label><select name="cliente_id" ${bloqueado('projeto_id')}>${opcoes(clientes, clienteAtual, 'Interno (sem cliente)')}</select></div>
       <div class="campo"><label>Projeto</label><select name="projeto_id" ${bloqueado('projeto_id')}></select><span class="fraco" id="aviso-projeto"></span></div>
       <div class="campo"><label>Responsável</label><select name="responsavel_id" ${bloqueado('responsavel_id')}>${opcoes(pessoas, t.responsavel_id, 'Ninguém ainda')}</select></div>
@@ -35,8 +35,8 @@ export async function abrirTarefa(ctx, tarefa, padrao = {}) {
       <div class="campo"><label>Prioridade</label><select name="prioridade" ${bloqueado('prioridade')}>${opcoes([{ chave: 'normal', nome: 'Normal' }, { chave: 'urgente', nome: 'Urgente' }], t.prioridade)}</select></div>
       <div class="campo"><label>Prazo</label><input type="date" name="prazo" value="${esc(t.prazo ?? '')}" ${bloqueado('prazo')}></div>
       <div class="campo"><label>Compromisso (data e hora)</label><input type="datetime-local" name="inicio" value="${paraCampoDataHora(t.inicio)}" ${bloqueado('inicio')}></div>
-      <div class="campo"><label>Local</label><input type="text" name="local" value="${esc(t.local ?? '')}" placeholder="Para gravações e reuniões" ${bloqueado('local')}></div>
-      <div class="campo inteiro"><label>Descrição</label><textarea name="descricao" ${bloqueado('descricao')}>${esc(t.descricao ?? '')}</textarea></div>
+      <div class="campo"><label>Local</label><input type="text" name="local" maxlength="300" value="${esc(t.local ?? '')}" placeholder="Para gravações e reuniões" ${bloqueado('local')}></div>
+      <div class="campo inteiro"><label>Descrição</label><textarea name="descricao" maxlength="20000" ${bloqueado('descricao')}>${esc(t.descricao ?? '')}</textarea></div>
     </form>
     ${nova ? '' : '<div class="comentarios"><h3>Comentários</h3><div id="lista-comentarios" style="margin-top:14px"></div></div>'}`;
 
@@ -101,7 +101,7 @@ async function desenharComentarios(ctx, t, alvo) {
       return `<div class="comentario"><span class="avatar">${esc(iniciais(nome))}</span>
         <div class="balao"><b>${esc(nome)}</b> <span class="fraco">${dataHora(c.criado_em)}</span><p>${comMencoes(c.texto)}</p></div></div>`;
     }).join('') : '<p class="fraco">Nenhum comentário ainda.</p>'}
-    <div class="novo-comentario"><textarea id="texto-comentario" placeholder="Escreva um comentário. Para chamar alguém: ${esc(primeiros)}"></textarea>
+    <div class="novo-comentario"><textarea id="texto-comentario" maxlength="5000" placeholder="Escreva um comentário. Para chamar alguém: ${esc(primeiros)}"></textarea>
     <button class="botao" id="enviar-comentario">Enviar</button></div>`;
   $('#enviar-comentario', alvo).onclick = async () => {
     const texto = $('#texto-comentario', alvo).value.trim();

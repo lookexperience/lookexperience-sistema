@@ -21,6 +21,11 @@ function traduzirErro(msg) {
   if (/Email not confirmed/i.test(msg)) return 'Confirme seu e-mail pelo link que enviamos antes de entrar.';
   if (/already registered/i.test(msg)) return 'Esse e-mail já tem conta. Use "Entrar".';
   if (/Password should be/i.test(msg)) return 'A senha precisa ter pelo menos 6 caracteres.';
+  const espera = msg.match(/only request this after (\d+) seconds/i);
+  if (espera) return `Por segurança, espere ${espera[1]} segundos antes de tentar de novo.`;
+  if (/rate limit/i.test(msg)) return 'Muitas tentativas em pouco tempo. Espere alguns minutos e tente de novo.';
+  if (/invalid format|valid email/i.test(msg)) return 'Confira o e-mail digitado.';
+  if (/Failed to fetch|NetworkError/i.test(msg)) return 'Sem conexão com o servidor. Confira a internet e tente de novo.';
   return msg;
 }
 

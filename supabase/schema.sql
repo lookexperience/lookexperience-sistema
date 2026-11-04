@@ -140,6 +140,26 @@ create index if not exists comentarios_tarefa_idx on public.comentarios (tarefa_
 create index if not exists avisos_usuario_idx on public.avisos (usuario_id, lido);
 
 -- ---------------------------------------------------------------------
+-- Limites de tamanho e formato. Impedem que alguém encha o banco com
+-- textos gigantes (o plano grátis tem 500 MB) ou grave código na cor.
+-- ---------------------------------------------------------------------
+create or replace function pg_temp.limite(tabela text, nome text, regra text) returns void
+language plpgsql as $$
+begin
+  if not exists (select 1 from pg_constraint where conname = nome) then
+    execute format('alter table public.%I add constraint %I check (%s)', tabela, nome, regra);
+  end if;
+end $$;
+
+select pg_temp.limite('perfis', 'perfis_tamanhos', 'char_length(nome) <= 120 and char_length(cargo) <= 120 and char_length(email) <= 320');
+select pg_temp.limite('clientes', 'clientes_tamanhos', 'char_length(btrim(nome)) between 1 and 200 and char_length(contato) <= 200 and char_length(email) <= 320 and char_length(telefone) <= 60 and char_length(instagram) <= 120 and char_length(observacoes) <= 20000');
+select pg_temp.limite('clientes', 'clientes_cor', $c$cor = '' or cor ~ '^#[0-9A-Fa-f]{6}$'$c$);
+select pg_temp.limite('projetos', 'projetos_tamanhos', 'char_length(btrim(nome)) between 1 and 200 and char_length(tipo) <= 120 and char_length(descricao) <= 20000');
+select pg_temp.limite('tarefas', 'tarefas_tamanhos', 'char_length(btrim(titulo)) between 1 and 300 and char_length(descricao) <= 20000 and char_length(local) <= 300');
+select pg_temp.limite('comentarios', 'comentarios_tamanhos', 'char_length(btrim(texto)) between 1 and 5000');
+select pg_temp.limite('avisos', 'avisos_tamanhos', 'char_length(texto) <= 1000');
+
+-- ---------------------------------------------------------------------
 -- Funções de permissão (usadas pelas políticas abaixo).
 -- "security definer" deixa a função ler perfis/permissões sem cair
 -- nas próprias regras de segurança (evita um laço infinito).
@@ -203,6 +223,21 @@ language sql stable security definer set search_path = public as $$
   select exists (select 1 from projetos p where p.cliente_id = p_cliente and public.ve_tarefa_do_projeto(p.id));
 $$;
 
+-- Uma pessoa QUALQUER (não quem está logado) enxerga a tarefa? Mesmas regras
+-- de pode_ver_tarefa, usadas para não mandar aviso com título de tarefa a
+-- quem não pode vê-la.
+create or replace function public.usuario_ve_tarefa(p_usuario uuid, p_tarefa uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from perfis u join tarefas t on t.id = p_tarefa
+    where u.id = p_usuario and u.ativo
+      and (u.admin or exists (
+        select 1 from permissoes pm
+        where pm.usuario_id = u.id and pm.modulo = 'tarefas' and pm.ver
+          and (pm.escopo = 'todas' or t.responsavel_id = u.id or t.criado_por = u.id
+               or (pm.escopo = 'setor' and t.setor = any(u.setores))))));
+$$;
+
 -- ---------------------------------------------------------------------
 -- Gatilhos (acontecem sozinhos).
 -- ---------------------------------------------------------------------
@@ -225,13 +260,13 @@ drop trigger if exists ao_criar_usuario on auth.users;
 create trigger ao_criar_usuario after insert on auth.users
   for each row execute function public.ao_criar_usuario();
 
--- Só o administrador muda cargo, setores, admin e ativo. Os outros
--- podem mudar apenas o próprio nome.
+-- Só o administrador muda nome, cargo, setores, admin e ativo. O nome também,
+-- para ninguém se passar por outra pessoa nem receber as marcações dela.
 create or replace function public.proteger_perfil() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
   if not public.eh_admin() then
-    new.cargo := old.cargo; new.setores := old.setores;
+    new.nome := old.nome; new.cargo := old.cargo; new.setores := old.setores;
     new.admin := old.admin; new.ativo := old.ativo; new.email := old.email;
   end if;
   return new;
@@ -314,7 +349,7 @@ begin
      and new.responsavel_id is distinct from auth.uid()
      and (tg_op = 'INSERT' or new.responsavel_id is distinct from old.responsavel_id) then
     insert into avisos (usuario_id, texto, tarefa_id)
-    values (new.responsavel_id, 'Nova tarefa para você: ' || new.titulo, new.id);
+    values (new.responsavel_id, left('Nova tarefa para você: ' || new.titulo, 1000), new.id);
   end if;
   return new;
 end $$;
@@ -324,7 +359,7 @@ create trigger avisar_responsavel after insert or update of responsavel_id on pu
   for each row execute function public.avisar_responsavel();
 
 -- Aviso de comentário: para o responsável da tarefa e para quem foi
--- marcado com @PrimeiroNome.
+-- marcado com @PrimeiroNome, desde que a pessoa possa ver a tarefa.
 create or replace function public.avisar_comentario() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare
@@ -336,14 +371,16 @@ begin
 
   insert into avisos (usuario_id, texto, tarefa_id)
   select p.id,
-         case when new.texto ilike '%@' || split_part(p.nome, ' ', 1) || '%'
+         left(case when m.marcado
               then v_autor || ' marcou você em: ' || v_tarefa.titulo
-              else v_autor || ' comentou em: ' || v_tarefa.titulo end,
+              else v_autor || ' comentou em: ' || v_tarefa.titulo end, 1000),
          new.tarefa_id
   from perfis p
+  cross join lateral (select split_part(p.nome, ' ', 1) <> ''
+    and strpos(lower(new.texto), lower('@' || split_part(p.nome, ' ', 1))) > 0 as marcado) m
   where p.ativo and p.id <> new.autor_id
-    and (p.id = v_tarefa.responsavel_id
-         or (split_part(p.nome, ' ', 1) <> '' and new.texto ilike '%@' || split_part(p.nome, ' ', 1) || '%'));
+    and (p.id = v_tarefa.responsavel_id or m.marcado)
+    and public.usuario_ve_tarefa(p.id, new.tarefa_id);
   return new;
 end $$;
 
@@ -427,6 +464,20 @@ create policy comentarios_apagar on public.comentarios for delete to authenticat
   using (autor_id = auth.uid() or public.eh_admin());
 
 -- Avisos: cada um vê e marca como lido os seus.
-create policy avisos_ler on public.avisos for select to authenticated using (usuario_id = auth.uid());
+create policy avisos_ler on public.avisos for select to authenticated using (usuario_id = auth.uid() and public.esta_ativo());
 create policy avisos_marcar on public.avisos for update to authenticated using (usuario_id = auth.uid());
 create policy avisos_apagar on public.avisos for delete to authenticated using (usuario_id = auth.uid());
+
+-- ---------------------------------------------------------------------
+-- Visitante sem login (papel "anon" do Supabase) não toca em nada:
+-- nem tabelas, nem funções. O login usa o serviço de autenticação, não
+-- estas tabelas. Quem está logado ("authenticated") passa pelas regras acima.
+-- ---------------------------------------------------------------------
+revoke all on all tables in schema public from anon;
+revoke execute on all functions in schema public from public, anon;
+grant execute on all functions in schema public to authenticated;
+
+-- Única porta aberta para o visitante: um "oi" sem dados, usado pelo robô
+-- do GitHub que impede o Supabase grátis de pausar o banco por falta de uso.
+create or replace function public.ping() returns text language sql stable as $$ select 'ok'::text $$;
+grant execute on function public.ping() to anon;

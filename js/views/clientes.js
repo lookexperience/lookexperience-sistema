@@ -29,13 +29,13 @@ function abrirCliente(ctx, cliente) {
   const podeSalvar = novo ? pode(s, 'clientes', 'criar') : pode(s, 'clientes', 'editar');
   const dis = podeSalvar ? '' : 'disabled';
   const projetos = novo ? [] : ctx.estado.projetos.filter((p) => p.cliente_id === c.id);
-  const campo = (nome, rotulo, tipo = 'text', inteiro = false) => `<div class="campo ${inteiro ? 'inteiro' : ''}"><label>${rotulo}</label><input type="${tipo}" name="${nome}" value="${esc(c[nome])}" ${dis} ${nome === 'nome' ? 'required' : ''}></div>`;
+  const campo = (nome, rotulo, tipo = 'text', inteiro = false) => `<div class="campo ${inteiro ? 'inteiro' : ''}"><label>${rotulo}</label><input type="${tipo}" name="${nome}" value="${esc(c[nome])}" maxlength="${{ nome: 200, contato: 200, telefone: 60, email: 320, instagram: 120 }[nome]}" ${dis} ${nome === 'nome' ? 'required' : ''}></div>`;
   const { el, fechar } = abrirModal({
     titulo: novo ? 'Novo cliente' : esc(c.nome),
     corpo: `<form class="grade-campos" id="form-cliente">
       ${campo('nome', 'Nome', 'text', true)}${campo('contato', 'Pessoa de contato')}${campo('telefone', 'Telefone')}${campo('email', 'E-mail', 'email')}${campo('instagram', 'Instagram')}
       <div class="campo inteiro"><label>Cor do cliente</label>${paletaCores(corCliente(c), 'cliente', !podeSalvar)}</div>
-      <div class="campo inteiro"><label>Observações</label><textarea name="observacoes" ${dis}>${esc(c.observacoes)}</textarea></div></form>
+      <div class="campo inteiro"><label>Observações</label><textarea name="observacoes" maxlength="20000" ${dis}>${esc(c.observacoes)}</textarea></div></form>
       ${novo ? '' : `<div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px">
         <h3>Projetos deste cliente</h3>
         ${pode(s, 'projetos', 'criar') ? '<button class="botao pequeno" id="novo-projeto">+ Novo projeto</button>' : ''}</div>

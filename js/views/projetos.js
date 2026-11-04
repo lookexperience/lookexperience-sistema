@@ -122,13 +122,13 @@ export function abrirProjeto(ctx, projeto, clienteId = '', aoSalvar) {
   const { el, fechar } = abrirModal({
     titulo: novo ? 'Novo projeto' : esc(p.nome),
     corpo: `<form class="grade-campos" id="form-projeto">
-      <div class="campo inteiro"><label>Nome do projeto</label><input type="text" name="nome" required value="${esc(p.nome)}" ${dis}></div>
+      <div class="campo inteiro"><label>Nome do projeto</label><input type="text" name="nome" maxlength="200" required value="${esc(p.nome)}" ${dis}></div>
       <div class="campo"><label>Cliente</label><select name="cliente_id" ${dis}>${opcoes(clientes, p.cliente_id, 'Sem cliente (interno)')}</select></div>
-      <div class="campo"><label>Tipo</label><input type="text" name="tipo" value="${esc(p.tipo)}" placeholder="Rebranding, conteúdo mensal, site..." ${dis}></div>
+      <div class="campo"><label>Tipo</label><input type="text" name="tipo" maxlength="120" value="${esc(p.tipo)}" placeholder="Rebranding, conteúdo mensal, site..." ${dis}></div>
       <div class="campo"><label>Início</label><input type="date" name="inicio" value="${esc(p.inicio ?? '')}" ${dis}></div>
       <div class="campo"><label>Fim previsto</label><input type="date" name="fim" value="${esc(p.fim ?? '')}" ${dis}></div>
       <div class="campo"><label>Status</label><select name="status" ${dis}>${opcoes(STATUS_PROJETO, p.status)}</select></div>
-      <div class="campo inteiro"><label>Descrição</label><textarea name="descricao" ${dis}>${esc(p.descricao)}</textarea></div></form>`,
+      <div class="campo inteiro"><label>Descrição</label><textarea name="descricao" maxlength="20000" ${dis}>${esc(p.descricao)}</textarea></div></form>`,
     rodape: `${!novo && pode(s, 'projetos', 'apagar') ? '<button class="botao perigo" id="apagar">Apagar</button>' : ''}<span class="espaco"></span>
       ${podeSalvar ? '<button class="botao primario" id="salvar">Salvar</button>' : ''}`,
   });

@@ -28,8 +28,6 @@ create function teste.como(usuario uuid) returns void language sql as $$
   select set_config('request.jwt.claim.sub', coalesce(usuario::text, ''), false);
 $$;
 
--- Supabase dá acesso às tabelas também para "anon" (visitante sem login).
-grant all on all tables in schema public to anon;
 
 -- ---------------------------------------------------------------------
 -- Pessoas: A admin, G gerente, F freelancer, N conta nova, D desativada
@@ -102,7 +100,7 @@ select teste.linhas($$update tarefas set criado_por = '00000000-0000-0000-0000-0
 select teste.ok((select criado_por = '00000000-0000-0000-0000-0000000000bb' from tarefas where id = '30000000-0000-0000-0000-000000000005'), 'Ninguém troca o autor de uma tarefa');
 update perfis set admin = true, setores = '{comercial,criacao,execucao}', cargo = 'Chefe', nome = 'Marina G.' where id = '00000000-0000-0000-0000-0000000000bb';
 select teste.ok((select not admin and setores = '{criacao,execucao}' and cargo = 'Gerente de criação' from perfis where email = 'marina@look'), 'Gerente não se promove a admin nem muda os próprios setores');
-select teste.ok((select nome = 'Marina G.' from perfis where email = 'marina@look'), 'Gerente muda o próprio nome');
+select teste.ok((select nome = 'Marina Gerente' from perfis where email = 'marina@look'), 'Gerente não muda o próprio nome (só o admin, para ninguém se passar por outra pessoa)');
 select teste.ok((select count(*) = 4 from permissoes), 'Gerente vê só as próprias permissões', (select count(*)::text from permissoes));
 select teste.ok(teste.linhas($$insert into permissoes values ('00000000-0000-0000-0000-0000000000bb', 'financeiro', true, true, true, true, 'todas')$$) = -1, 'Gerente não se dá permissão nova');
 select teste.ok(teste.linhas($$update permissoes set apagar = true where usuario_id = '00000000-0000-0000-0000-0000000000bb'$$) = 0, 'Gerente não altera as próprias permissões');
@@ -158,7 +156,7 @@ select teste.ok((select count(*) = 1 from perfis), 'Conta desativada vê só o p
 reset role;
 set role anon;
 select teste.como(null);
-select teste.ok((select count(*) = 0 from tarefas) and (select count(*) = 0 from perfis) and (select count(*) = 0 from clientes), 'Visitante sem login não vê nada');
+select teste.ok(teste.linhas($$select * from tarefas$$) = -1 and teste.linhas($$select * from perfis$$) = -1 and teste.linhas($$select * from clientes$$) = -1, 'Visitante sem login não vê nada');
 select teste.ok(teste.linhas($$insert into clientes (nome) values ('x')$$) = -1, 'Visitante sem login não grava nada');
 
 -- ---------------------------------------------------------------------
@@ -168,7 +166,7 @@ reset role;
 set role authenticated;
 select teste.como('00000000-0000-0000-0000-0000000000aa');
 reset role;
-select teste.ok((select count(*) = 1 from avisos where usuario_id = '00000000-0000-0000-0000-0000000000cc' and texto like 'Marina G. marcou você%'), 'Comentário com @Rafa gera aviso para o Rafa');
+select teste.ok((select count(*) = 1 from avisos where usuario_id = '00000000-0000-0000-0000-0000000000cc' and texto like 'Marina Gerente marcou você%'), 'Comentário com @Rafa gera aviso para o Rafa');
 set role authenticated;
 update perfis set admin = true where email = 'marina@look';
 select teste.ok(teste.linhas($$update perfis set admin = false where email = 'pablo@look'$$) = 1, 'Com dois administradores, um pode deixar de ser admin');
@@ -180,6 +178,72 @@ select teste.ok(teste.linhas($$delete from clientes where id = '10000000-0000-00
 select teste.ok((select cliente_id is null from projetos where id = '20000000-0000-0000-0000-000000000002'), 'Apagar cliente mantém o projeto, sem cliente');
 select teste.ok(teste.linhas($$delete from perfis where id = '00000000-0000-0000-0000-0000000000aa'$$) = 0, 'Admin não remove a própria conta');
 
+
+-- ---------------------------------------------------------------------
+-- ATAQUES: alguém tentando burlar as regras
+-- ---------------------------------------------------------------------
+update perfis set admin = false where email = 'marina@look';
+
+-- Conta nova tentando se liberar sozinha
+select teste.como('00000000-0000-0000-0000-0000000000dd');
+select teste.ok(teste.linhas($$insert into permissoes values ('00000000-0000-0000-0000-0000000000dd', 'tarefas', true, true, true, true, 'todas')$$) = -1, 'Ataque: conta nova não se dá permissão');
+update perfis set admin = true, ativo = true, setores = '{comercial}' where id = '00000000-0000-0000-0000-0000000000dd';
+select teste.ok((select not admin and setores = '{}' from perfis where id = '00000000-0000-0000-0000-0000000000dd'), 'Ataque: conta nova não se promove a admin');
+select teste.ok(teste.linhas($$insert into perfis (id, nome, admin) values (gen_random_uuid(), 'Fantasma', true)$$) = -1, 'Ataque: ninguém cria perfil na mão');
+select teste.ok(teste.linhas($$update perfis set id = '00000000-0000-0000-0000-0000000000aa' where id = '00000000-0000-0000-0000-0000000000dd'$$) = -1, 'Ataque: conta nova não assume o lugar de outra');
+
+-- Cadastro tentando nascer administrador pelos dados extras do formulário
+reset role;
+insert into auth.users (id, email, raw_user_meta_data) values ('00000000-0000-0000-0000-0000000000ff', 'esperto@x', '{"nome":"Esperto","admin":true,"ativo":true}');
+select teste.ok((select not admin from perfis where email = 'esperto@x'), 'Ataque: cadastro com "admin" nos dados não vira administrador');
+set role authenticated;
+
+-- Freelancer trocando o próprio nome para receber avisos dos outros
+select teste.como('00000000-0000-0000-0000-0000000000cc');
+update perfis set nome = '%' where id = '00000000-0000-0000-0000-0000000000cc';
+select teste.ok((select nome <> '%' from perfis where id = '00000000-0000-0000-0000-0000000000cc'), 'Ataque: freelancer não troca o próprio nome (só o admin)');
+select teste.ok(teste.linhas($$delete from tarefas where id = '30000000-0000-0000-0000-000000000003'$$) = 0, 'Ataque: freelancer sem "apagar" não apaga a própria tarefa');
+select teste.ok(teste.linhas($$update tarefas set status = 'aprovado_por_mim' where id = '30000000-0000-0000-0000-000000000003'$$) = -1, 'Ataque: status inventado é recusado');
+
+-- Gerente marcando o freelancer numa tarefa que ele não pode ver
+reset role;
+update perfis set nome = '%' where id = '00000000-0000-0000-0000-0000000000cc';
+delete from avisos;
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.ok(teste.linhas($$insert into comentarios (tarefa_id, texto) values ('30000000-0000-0000-0000-000000000002', 'Confidencial, fala com @Marina')$$) = 1, 'Admin comenta em tarefa do comercial');
+reset role;
+select teste.ok((select count(*) = 0 from avisos where usuario_id = '00000000-0000-0000-0000-0000000000cc'), 'Ataque: nome "%" não faz o freelancer receber avisos de todos os comentários');
+select teste.ok((select count(*) = 0 from avisos where usuario_id = '00000000-0000-0000-0000-0000000000bb'), 'Marcar alguém que não vê a tarefa não vaza o título para essa pessoa');
+update perfis set nome = 'Rafa Freela' where id = '00000000-0000-0000-0000-0000000000cc';
+set role authenticated;
+
+-- Gerente tentando tirar a tarefa do setor dela (sumir com ela) e textos gigantes
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok(teste.linhas($$update tarefas set setor = 'comercial' where id = '30000000-0000-0000-0000-000000000003'$$) = -1, 'Ataque: gerente não joga tarefa para um setor que ela não vê');
+select teste.ok(teste.linhas($$insert into tarefas (titulo, setor) values (repeat('x', 1000000), 'criacao')$$) = -1, 'Ataque: título gigante (1 MB) é recusado');
+select teste.ok(teste.linhas($$insert into tarefas (titulo, setor) values ('   ', 'criacao')$$) = -1, 'Tarefa sem título é recusada');
+select teste.ok(teste.linhas($$insert into comentarios (tarefa_id, texto) values ('30000000-0000-0000-0000-000000000001', repeat('x', 100000))$$) = -1, 'Ataque: comentário gigante é recusado');
+
+-- Admin (ou quem rouba a sessão dele) gravando cor com código
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.ok(teste.linhas($$update clientes set cor = '#fff" onmouseover="alert(1)' where id = '10000000-0000-0000-0000-000000000001'$$) = -1, 'Ataque: cor com código é recusada pelo banco');
+select teste.ok(teste.linhas($$update clientes set cor = '#4F7FB8' where id = '10000000-0000-0000-0000-000000000001'$$) = 1, 'Cor válida continua sendo aceita');
+
+-- Conta desativada não lê avisos antigos (que trazem títulos de tarefas)
+reset role;
+insert into avisos (usuario_id, texto) values ('00000000-0000-0000-0000-0000000000ee', 'Nova tarefa para você: Segredo');
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000ee');
+select teste.ok((select count(*) = 0 from avisos), 'Ataque: conta desativada não lê avisos antigos');
+
+-- Visitante sem login chamando as funções do banco direto pela API
+reset role;
+set role anon;
+select teste.como(null);
+select teste.ok(teste.linhas($$select public.pode('tarefas', 'ver')$$) = -1, 'Ataque: visitante sem login não chama funções do banco');
+select teste.ok(teste.linhas($$select * from public.modulos$$) = -1, 'Ataque: visitante sem login não lê nem o catálogo de módulos');
+select teste.ok((select public.ping() = 'ok'), 'Robô que mantém o banco ativo consegue dar o "oi"');
 -- ---------------------------------------------------------------------
 reset role;
 \o

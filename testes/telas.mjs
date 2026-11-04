@@ -15,13 +15,18 @@ const CAPTURAS = join(RAIZ, 'testes', 'capturas');
 await mkdir(CAPTURAS, { recursive: true });
 
 // ---------- Servidor local das telas ----------
+// Envia os mesmos cabeçalhos de segurança do Netlify (netlify.toml), para os
+// testes rodarem sob as mesmas regras do site no ar.
+const CABECALHOS = Object.fromEntries([...(await readFile(join(RAIZ, 'netlify.toml'), 'utf8'))
+  .matchAll(/^\s*([A-Z][A-Za-z-]+) = "(.*)"\s*$/gm)].map((m) => [m[1], m[2]]));
 const TIPOS = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.woff2': 'font/woff2' };
 const servidor = createServer(async (req, res) => {
   const caminho = decodeURIComponent(new URL(req.url, 'http://x').pathname);
   try {
     const arquivo = join(RAIZ, caminho === '/' ? 'index.html' : caminho);
-    res.writeHead(200, { 'content-type': TIPOS[extname(arquivo)] ?? 'application/octet-stream' });
-    res.end(await readFile(arquivo));
+    const conteudo = await readFile(arquivo);
+    res.writeHead(200, { ...CABECALHOS, 'content-type': TIPOS[extname(arquivo)] ?? 'application/octet-stream' });
+    res.end(conteudo);
   } catch { res.writeHead(404); res.end(); }
 });
 await new Promise((ok) => servidor.listen(0, ok));
@@ -88,6 +93,11 @@ await p.waitForSelector('.menu');
 // =====================================================================
 // ADMINISTRADOR
 // =====================================================================
+await teste('Site envia a política de segurança (CSP) do Netlify', async () => {
+  const r = await p.request.get(BASE);
+  confere((r.headers()['content-security-policy'] ?? '').includes("script-src 'self'"), 'CSP ausente');
+});
+
 await teste('Admin: sistema abre e mostra o menu completo', async () => {
   igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Equipe e acessos'], 'menu');
 });
@@ -512,6 +522,51 @@ await teste('Celular: telas cabem na largura (sem rolagem para o lado)', async (
   }
   await p.screenshot({ path: join(CAPTURAS, 'celular.png') });
   await p.setViewportSize({ width: 1440, height: 2000 });
+});
+
+// =====================================================================
+// ATAQUES: código malicioso escondido nos textos
+// Alguém com acesso (ou uma conta nova, pelo próprio nome) grava HTML e
+// JavaScript nos campos. Nenhuma tela pode executar esse código.
+// =====================================================================
+await teste('Ataque: código escondido em nomes, textos e cores não é executado em nenhuma tela', async () => {
+  await comoUsuario('u-pablo');
+  await p.click('#resetar-demo'); await p.waitForTimeout(300);
+  await p.evaluate(() => {
+    const isca = (onde) => `<img src=x data-xss="${onde}" onerror="window.__xss=(window.__xss||[]).concat('${onde}')">`;
+    const fuga = (onde) => `"><img src=x data-xss="${onde}" onerror="window.__xss=(window.__xss||[]).concat('${onde}')">`;
+    const dados = JSON.parse(localStorage.getItem('look-sistema-demo-v4'));
+    const b = dados.banco;
+    for (const pf of b.perfis) if (pf.id !== 'u-pablo') { pf.nome = `Rafa ${isca('perfil.nome')}${fuga('perfil.nome2')}`; pf.cargo = isca('perfil.cargo'); pf.email = fuga('perfil.email'); }
+    for (const c of b.clientes) {
+      c.nome = `Cliente ${isca('cliente.nome')}${fuga('cliente.nome2')}`; c.contato = isca('cliente.contato'); c.observacoes = isca('cliente.obs');
+      c.instagram = fuga('cliente.insta'); c.email = fuga('cliente.email'); c.telefone = fuga('cliente.tel');
+      c.cor = '#fff" data-xss="cliente.cor';
+    }
+    for (const pr of b.projetos) { pr.nome = `Projeto ${isca('projeto.nome')}${fuga('projeto.nome2')}`; pr.tipo = fuga('projeto.tipo'); pr.descricao = isca('projeto.desc'); }
+    for (const t of b.tarefas) { t.titulo = `Tarefa ${isca('tarefa.titulo')}${fuga('tarefa.titulo2')}`; t.descricao = isca('tarefa.desc'); t.local = fuga('tarefa.local'); }
+    for (const c of b.comentarios) c.texto = `@Rafa ${isca('comentario')}${fuga('comentario2')}`;
+    b.avisos.push({ id: 'a-xss', usuario_id: 'u-pablo', texto: isca('aviso'), tarefa_id: b.tarefas[0].id, lido: false, criado_em: new Date().toISOString() });
+    localStorage.setItem('look-sistema-demo-v4', JSON.stringify(dados));
+  });
+  await p.reload(); await p.waitForSelector('.menu');
+  const injetados = () => p.evaluate(() => [...document.querySelectorAll('[data-xss]')].map((e) => e.getAttribute('data-xss')).concat(window.__xss ?? []));
+  const achados = new Set();
+  const anotar = async () => (await injetados()).forEach((x) => achados.add(x));
+  for (const rota of ['visao-geral', 'atividades', 'calendario', 'clientes', 'projetos', 'equipe', 'sobre']) {
+    await ir(rota); await anotar();
+  }
+  await ir('calendario'); await p.click('[data-aba=postagens]'); await anotar();
+  await ir('atividades'); await p.locator('.cartao').first().click(); await p.waitForTimeout(150); await anotar(); await fecharModal();
+  await ir('clientes'); await p.locator('tr[data-id]').first().click(); await p.waitForTimeout(150); await anotar(); await fecharModal();
+  await ir('projetos'); await p.locator('tr[data-id]').first().click(); await p.waitForTimeout(150); await anotar(); await fecharModal();
+  await ir('equipe'); await p.locator('tr[data-id=u-rafa]').click(); await p.waitForTimeout(150); await anotar(); await fecharModal();
+  await p.click('#abrir-avisos'); await p.waitForTimeout(150); await anotar();
+  for (const usuario of ['u-marina', 'u-rafa', 'u-novo']) { await comoUsuario(usuario); await anotar(); }
+  await comoUsuario('u-pablo');
+  // Imagens com src=x quebradas geram erro no console; aqui só importa se o código rodou.
+  errosDaPagina = errosDaPagina.filter((e) => !/Failed to load resource/.test(e));
+  igual([...achados].sort(), [], 'código injetado apareceu ou rodou em');
 });
 
 // ---------- Resultado ----------
