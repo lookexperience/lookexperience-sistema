@@ -2,7 +2,7 @@
 
 Painel online da LOOK para organizar tarefas, calendário, clientes e projetos, com login e permissões por usuário.
 
-**Versão:** 0.2.0 (fase 1 + ajustes da primeira revisão). O histórico de mudanças fica em `js/versao.js` e aparece na tela "Sobre o sistema".
+**Versão:** 0.3.0. O histórico de mudanças fica em `js/versao.js` e aparece na tela "Sobre o sistema".
 
 ## Como está montado
 
@@ -12,6 +12,7 @@ Painel online da LOOK para organizar tarefas, calendário, clientes e projetos, 
 | `supabase/schema.sql` | O banco de dados: tabelas, permissões por usuário e as regras de segurança. |
 | `js/config.js` | Endereço e chave pública do Supabase. |
 | `netlify.toml` | Configuração de publicação no Netlify. |
+| `js/apresentacao/`, `modelos/` | Tela Apresentações: lê o Word no navegador (`docx.js`) e monta os slides no padrão LOOK (`slides.js`). `modelos/modelo-apresentacao-look.docx` é o modelo para baixar. |
 | `testes/` | Testes automáticos de cada tipo de usuário (banco e telas). Ver `testes/LEIA-ME.md`. |
 
 ## Modo demonstração

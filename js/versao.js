@@ -2,6 +2,18 @@
 // entrada no topo desta lista; a tela "Sobre o sistema" mostra tudo.
 export const HISTORICO = [
   {
+    versao: '0.3.0',
+    data: '2026-11-04',
+    titulo: 'Apresentações a partir do Word',
+    itens: [
+      'Nova tela Apresentações: arrasta um Word (.docx) e sai a apresentação no padrão visual da LOOK',
+      'Segue o formato da proposta comercial: capa com título, etiqueta e "Apresentada a / por / Data", um slide por Título 2, cartões, etapas, colunas, listas, tabelas, imagens e aceite',
+      'Texto se ajusta sozinho ao slide (cresce se é pouco, diminui se é muito) e o slide Obrigado com os contatos entra no fim',
+      'Botões para apresentar em tela cheia (setas, N mostra as notas), salvar em PDF e baixar a apresentação num arquivo único que abre em qualquer computador',
+      'Modelo de Word para baixar na própria tela; o arquivo não sai do computador de quem usa',
+    ],
+  },
+  {
     versao: '0.2.2',
     data: '2026-11-04',
     titulo: 'Senha de acesso para criar conta',
