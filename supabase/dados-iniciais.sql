@@ -1,6 +1,6 @@
 -- =====================================================================
 -- Dados iniciais da LOOK: clientes, projetos e a lista de tarefas que
--- estava no Claude (LOOK: Lista de tarefas, 30/10/2026).
+-- estava no Claude (LOOK: Lista de tarefas, atualizada em 04/11/2026).
 --
 -- Como usar: depois de rodar o schema.sql e de criar a conta do
 -- administrador, cole este arquivo no SQL Editor do Supabase e clique em
@@ -74,7 +74,10 @@ begin
 
   c := pg_temp.cliente('Fusion Soldas', '#D08C3C');
   pr := pg_temp.projeto(c, 'Landing page', 'Site');
-  perform pg_temp.tarefa(pr, 'Criar a landing page da Fusion Soldas', 'criacao');
+  perform pg_temp.tarefa(pr, 'Criar a landing page da Fusion Soldas', 'criacao', 'fazendo', 'Aguardando resposta do cliente.');
+  -- Quem importou a versão de 30/10 ainda tem essa tarefa como "a fazer".
+  update public.tarefas set status = 'fazendo', descricao = 'Aguardando resposta do cliente.'
+   where projeto_id = pr and titulo = 'Criar a landing page da Fusion Soldas' and status = 'a_fazer' and descricao = '';
 
   c := pg_temp.cliente('Ketlin Joias', '#B5638F', 'Ketlin (prima)');
   pr := pg_temp.projeto(c, 'Nova identidade visual', 'Identidade visual');
@@ -116,6 +119,18 @@ begin
   c := pg_temp.cliente('Rei dos Pod', '#7A6BB5', 'Kelvin');
   pr := pg_temp.projeto(c, 'Pacote de rádio', 'Rádio');
   perform pg_temp.tarefa(pr, 'Dar retorno sobre a rádio ao Kelvin', 'comercial');
+
+  c := pg_temp.cliente('McKinsey', '#4F7FB8', '', 'Site mckinsey.com.br com bugs e páginas que não abrem.');
+  pr := pg_temp.projeto(c, 'Prospecção', 'Comercial');
+  perform pg_temp.tarefa(pr, 'Entrar em contato para refazer o site: está com bugs e algumas páginas não abrem', 'comercial');
+
+  -- ---------------- Projeto pessoal: acompanhante de bebês (sem cliente) ----------------
+  pr := pg_temp.projeto(null, 'Acompanhante de bebês de até 1 ano (Ourinhos)', 'Iniciativa pública', 'ativo',
+    'Pedido à Secretaria de Saúde e minuta de projeto para a Câmara de Ourinhos.');
+  perform pg_temp.tarefa(pr, 'Confirmar quem gerencia a UPA de Ourinhos e ler a Lei Orgânica e o Regimento da Câmara (projeto de vereador e iniciativa popular)', 'comercial');
+  perform pg_temp.tarefa(pr, 'Protocolar pedido na Secretaria de Saúde de Ourinhos sobre acompanhante de bebês de até 1 ano (modelo no documento)', 'execucao');
+  perform pg_temp.tarefa(pr, 'Levar a minuta a um vereador (comissão de saúde ou infância) e pedir revisão do jurídico da Câmara', 'comercial');
+  perform pg_temp.tarefa(pr, 'Buscar estudos de pediatria ou psicologia sobre vínculo paterno na primeira infância para a justificativa', 'criacao');
 
   -- ---------------- Tarefas internas da LOOK (sem cliente) ----------------
   perform pg_temp.tarefa(null, 'Escolher a frase da marca: "Entenda. Escolha. Expanda." ou "VEJA. ESCOLHA. CONTE."', 'criacao');
