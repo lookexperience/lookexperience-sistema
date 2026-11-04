@@ -1,9 +1,9 @@
 # O Supabase grátis pausa o banco depois de 7 dias sem uso. Este robô dá
-# um "oi" no banco a cada 2 dias para ele nunca pausar.
+# um "oi" no banco todo dia para ele nunca pausar.
 name: Manter o banco ativo
 on:
   schedule:
-    - cron: '17 11 */2 * *'
+    - cron: '17 11 * * *'
   workflow_dispatch:
 
 jobs:

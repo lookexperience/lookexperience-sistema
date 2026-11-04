@@ -211,12 +211,18 @@ setInterval(async () => {
   try { estado.avisos = await db.listar('avisos'); atualizarContador(); } catch { /* tenta de novo no próximo minuto */ }
 }, 60000);
 
+// Se o banco não responde (fora do ar ou pausado), a abertura não fica presa no logo.
+const LIMITE_ABERTURA = 15000;
+const semResposta = () => new Promise((_, falhar) => setTimeout(() => falhar(new Error(
+  'O banco de dados não respondeu. Ele pode estar pausado ou fora do ar: tente de novo em alguns minutos e, se continuar, avise o administrador.')), LIMITE_ABERTURA));
+
 (async () => {
   try {
-    await iniciarDados();
-    await iniciarApp();
+    await Promise.race([(async () => { await iniciarDados(); await iniciarApp(); })(), semResposta()]);
   } catch (err) {
-    raiz.innerHTML = `<div class="entrada"><div class="caixa"><h2>Não foi possível abrir o sistema</h2><p class="erro">${esc(err.message)}</p></div></div>`;
+    raiz.innerHTML = `<div class="entrada"><div class="caixa"><h2>Não foi possível abrir o sistema</h2><p class="erro">${esc(err.message)}</p>
+      <button class="botao" id="tentar-de-novo">Tentar de novo</button></div></div>`;
+    $('#tentar-de-novo').onclick = () => location.reload();
     console.error(err);
   }
 })();
