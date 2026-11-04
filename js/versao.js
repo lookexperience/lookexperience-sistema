@@ -2,6 +2,18 @@
 // entrada no topo desta lista; a tela "Sobre o sistema" mostra tudo.
 export const HISTORICO = [
   {
+    versao: '0.2.2',
+    data: '2026-11-04',
+    titulo: 'Senha de acesso para criar conta',
+    itens: [
+      'Criar conta agora pede a senha de acesso da LOOK, conferida pelo próprio banco (não dá para pular pela API)',
+      'A senha digitada não fica guardada na conta; no banco ela fica embaralhada e ninguém consegue lê-la',
+      'O administrador troca a senha de acesso em Equipe e acessos',
+      'Tarefa só entra em projeto (e projeto só entra em cliente) que a pessoa já enxerga, para ninguém passar a ver projeto alheio',
+      'Funções internas do banco fechadas também para quem está logado',
+    ],
+  },
+  {
     versao: '0.2.1',
     data: '2026-10-30',
     titulo: 'Sistema no ar e revisão de segurança',

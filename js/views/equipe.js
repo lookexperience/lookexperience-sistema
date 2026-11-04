@@ -34,11 +34,30 @@ export async function render(el, ctx) {
   el.innerHTML = `
     <div class="cabecalho"><div><div class="sobre">Equipe e acessos</div><h1>Quem usa o sistema</h1></div></div>
     <div class="painel" style="margin-bottom:18px"><p class="mudo" style="margin:0">
-      <b>Para colocar alguém novo:</b> mande o endereço do sistema para a pessoa. Ela clica em "Criar conta" e aparece aqui como "Aguardando liberação".
+      <b>Para colocar alguém novo:</b> mande o endereço do sistema e a senha de acesso da LOOK para a pessoa. Ela clica em "Criar conta" e aparece aqui como "Aguardando liberação".
       ${souAdmin ? 'Clique no nome dela e marque o que ela pode ver e fazer.' : 'Só o administrador muda as permissões.'}
-      As permissões ficam guardadas no banco de dados, por usuário.</p></div>
+      As permissões ficam guardadas no banco de dados, por usuário.</p>
+      ${souAdmin ? '<p class="mudo" style="margin:10px 0 0">A senha de acesso impede que estranhos criem conta. Troque sempre que alguém sair da equipe. <button class="botao pequeno" id="mudar-senha-acesso">Trocar senha de acesso</button></p>' : ''}</div>
     <div class="painel"><table class="tabela"><thead><tr><th>Pessoa</th><th>Cargo</th><th>Setores</th><th>Acesso</th></tr></thead><tbody>${linhas}</tbody></table></div>`;
   $$('tr[data-id]', el).forEach((tr) => tr.addEventListener('click', () => abrirPessoa(ctx, estado.perfis.find((p) => p.id === tr.dataset.id), todas)));
+  $('#mudar-senha-acesso', el)?.addEventListener('click', () => abrirSenhaAcesso(ctx));
+}
+
+function abrirSenhaAcesso(ctx) {
+  const { el, fechar } = abrirModal({
+    titulo: 'Trocar senha de acesso',
+    corpo: `<form id="form-senha-acesso">
+      <div class="campo"><label>Nova senha de acesso</label><input type="text" name="nova" required minlength="4" maxlength="100" autocomplete="off"></div>
+      <p class="fraco">Quem já tem conta continua entrando normalmente. A senha nova só vale para quem for criar conta daqui para frente.</p></form>`,
+    rodape: '<span class="espaco"></span><button class="botao primario" id="salvar-senha-acesso">Salvar</button>',
+  });
+  // Enter no campo salva aqui, sem enviar o formulário (que poria a senha no endereço da página).
+  $('#form-senha-acesso', el).addEventListener('submit', (e) => { e.preventDefault(); $('#salvar-senha-acesso', el).click(); });
+  $('#salvar-senha-acesso', el).addEventListener('click', async () => {
+    const campo = $('[name=nova]', el);
+    if (!campo.reportValidity()) return;
+    try { await ctx.db().mudarSenhaAcesso(campo.value); fechar(); avisar('Senha de acesso trocada'); } catch (err) { avisar(err.message); }
+  });
 }
 
 function matriz(permissoes, admin, bloqueado) {

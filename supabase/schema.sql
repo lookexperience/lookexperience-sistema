@@ -239,8 +239,60 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 -- ---------------------------------------------------------------------
+-- Senha de acesso para criar conta. Só quem sabe a senha da LOOK
+-- consegue se cadastrar. Fica guardada embaralhada (hash), numa tabela
+-- que ninguém lê pela internet. O administrador troca pela tela Equipe.
+-- ---------------------------------------------------------------------
+create table if not exists public.ajustes (
+  chave text primary key,
+  valor text not null
+);
+alter table public.ajustes enable row level security;
+insert into public.ajustes (chave, valor)
+values ('senha_acesso_hash', 'f7122818931147dd08cdb78351bc18de68de40b94b8390d047051b614614c81e')
+on conflict (chave) do nothing;
+
+create or replace function public.hash_senha_acesso(p_senha text) returns text
+language sql immutable as $$
+  select encode(sha256(convert_to(coalesce(p_senha, ''), 'UTF8')), 'hex');
+$$;
+
+create or replace function public.mudar_senha_acesso(p_nova text) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not public.eh_admin() then
+    raise exception 'Só o administrador muda a senha de acesso.';
+  end if;
+  if char_length(coalesce(p_nova, '')) not between 4 and 100 then
+    raise exception 'A senha de acesso precisa ter de 4 a 100 caracteres.';
+  end if;
+  insert into ajustes (chave, valor) values ('senha_acesso_hash', public.hash_senha_acesso(p_nova))
+  on conflict (chave) do update set valor = excluded.valor;
+end $$;
+
+-- ---------------------------------------------------------------------
 -- Gatilhos (acontecem sozinhos).
 -- ---------------------------------------------------------------------
+
+-- Antes de criar qualquer conta: confere a senha de acesso da LOOK. Vale
+-- também para quem tenta se cadastrar direto pela API, sem passar pela tela.
+-- A primeira conta (o administrador) não precisa. A senha digitada não fica
+-- guardada nos dados da conta.
+create or replace function public.exigir_senha_acesso() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if exists (select 1 from perfis)
+     and public.hash_senha_acesso(new.raw_user_meta_data->>'codigo')
+         is distinct from (select valor from ajustes where chave = 'senha_acesso_hash') then
+    raise exception 'Senha de acesso da LOOK incorreta.';
+  end if;
+  new.raw_user_meta_data := coalesce(new.raw_user_meta_data, '{}'::jsonb) - 'codigo';
+  return new;
+end $$;
+
+drop trigger if exists exigir_senha_acesso on auth.users;
+create trigger exigir_senha_acesso before insert on auth.users
+  for each row execute function public.exigir_senha_acesso();
 
 -- Toda conta nova ganha um perfil SEM permissões. A primeira conta
 -- criada vira administrador principal automaticamente.
@@ -402,7 +454,7 @@ alter table public.avisos      enable row level security;
 
 do $$ declare r record; begin
   for r in select policyname, tablename from pg_policies where schemaname = 'public'
-    and tablename in ('modulos','perfis','permissoes','clientes','projetos','tarefas','comentarios','avisos')
+    and tablename in ('modulos','perfis','permissoes','clientes','projetos','tarefas','comentarios','avisos','ajustes')
   loop execute format('drop policy %I on public.%I', r.policyname, r.tablename); end loop;
 end $$;
 
@@ -438,20 +490,29 @@ create policy clientes_apagar on public.clientes for delete to authenticated
 create policy projetos_ler on public.projetos for select to authenticated
   using (public.pode('projetos', 'ver') or public.ve_tarefa_do_projeto(id));
 create policy projetos_criar on public.projetos for insert to authenticated
-  with check (public.pode('projetos', 'criar'));
+  with check (public.pode('projetos', 'criar')
+              and (cliente_id is null or exists (select 1 from public.clientes c where c.id = cliente_id)));
 create policy projetos_editar on public.projetos for update to authenticated
-  using (public.pode('projetos', 'editar'));
+  using (public.pode('projetos', 'editar'))
+  with check (public.pode('projetos', 'editar')
+              and (cliente_id is null or exists (select 1 from public.clientes c where c.id = cliente_id)));
 create policy projetos_apagar on public.projetos for delete to authenticated
   using (public.pode('projetos', 'apagar'));
 
 -- Tarefas: o responsável sempre pode mover a própria tarefa.
 create policy tarefas_ler on public.tarefas for select to authenticated
   using (public.pode_ver_tarefa(setor, responsavel_id, criado_por));
+-- Tarefa só entra num projeto que a pessoa já enxerga (senão, ligando uma
+-- tarefa a um projeto alheio, ela passaria a ver o projeto e o cliente).
 create policy tarefas_criar on public.tarefas for insert to authenticated
-  with check (public.pode('tarefas', 'criar'));
+  with check (public.pode('tarefas', 'criar')
+              and (projeto_id is null or exists (select 1 from public.projetos p where p.id = projeto_id)));
 create policy tarefas_editar on public.tarefas for update to authenticated
   using (public.pode_ver_tarefa(setor, responsavel_id, criado_por)
-         and (public.pode('tarefas', 'editar') or responsavel_id = auth.uid()));
+         and (public.pode('tarefas', 'editar') or responsavel_id = auth.uid()))
+  with check (public.pode_ver_tarefa(setor, responsavel_id, criado_por)
+              and (public.pode('tarefas', 'editar') or responsavel_id = auth.uid())
+              and (projeto_id is null or exists (select 1 from public.projetos p where p.id = projeto_id)));
 create policy tarefas_apagar on public.tarefas for delete to authenticated
   using (public.pode('tarefas', 'apagar') and public.pode_ver_tarefa(setor, responsavel_id, criado_por));
 
@@ -476,6 +537,10 @@ create policy avisos_apagar on public.avisos for delete to authenticated using (
 revoke all on all tables in schema public from anon;
 revoke execute on all functions in schema public from public, anon;
 grant execute on all functions in schema public to authenticated;
+-- Funções que só o próprio banco usa (dentro dos gatilhos) ficam fechadas
+-- também para quem está logado.
+revoke execute on function public.usuario_ve_tarefa(uuid, uuid) from authenticated;
+revoke execute on function public.hash_senha_acesso(text) from authenticated;
 
 -- Única porta aberta para o visitante: um "oi" sem dados, usado pelo robô
 -- do GitHub que impede o Supabase grátis de pausar o banco por falta de uso.

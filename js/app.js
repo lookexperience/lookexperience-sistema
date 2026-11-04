@@ -66,8 +66,9 @@ function desenharEntrada(modoCriar = false, aviso = '') {
       <form id="form-entrada">
         <h2>${modoCriar ? 'Criar conta' : 'Entrar no sistema'}</h2>
         ${modoCriar ? '<div class="campo"><label>Nome completo</label><input type="text" name="nome" maxlength="120" required autocomplete="name"></div>' : ''}
-        <div class="campo"><label>E-mail</label><input type="email" name="email" required autocomplete="email"></div>
-        <div class="campo"><label>Senha</label><input type="password" name="senha" required minlength="6" autocomplete="${modoCriar ? 'new-password' : 'current-password'}"></div>
+        <div class="campo"><label>E-mail</label><input type="email" name="email" required maxlength="320" autocomplete="email"></div>
+        <div class="campo"><label>${modoCriar ? 'Crie sua senha' : 'Senha'}</label><input type="password" name="senha" required minlength="6" maxlength="72" autocomplete="${modoCriar ? 'new-password' : 'current-password'}"></div>
+        ${modoCriar ? '<div class="campo"><label>Senha de acesso da LOOK</label><input type="password" name="codigo" required maxlength="100" autocomplete="off"><div class="fraco">Peça ao administrador. Sem ela não dá para criar conta.</div></div>' : ''}
         ${aviso ? `<div class="aviso-entrada">${esc(aviso)}</div>` : ''}
         <div class="erro" id="erro-entrada"></div>
         <button class="botao primario" type="submit">${modoCriar ? 'Criar conta' : 'Entrar'}</button>
@@ -84,7 +85,7 @@ function desenharEntrada(modoCriar = false, aviso = '') {
     botao.disabled = true; // evita mandar o cadastro duas vezes
     try {
       if (modoCriar) {
-        const r = await db.criarConta(f.get('nome').trim(), f.get('email').trim(), f.get('senha'));
+        const r = await db.criarConta(f.get('nome').trim(), f.get('email').trim(), f.get('senha'), f.get('codigo'));
         if (r?.precisaConfirmar) {
           desenharEntrada(false, 'Conta criada. Enviamos um link de confirmação para o seu e-mail: clique nele e depois entre aqui.');
           return;
