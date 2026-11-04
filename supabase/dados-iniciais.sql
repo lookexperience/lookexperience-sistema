@@ -124,6 +124,11 @@ begin
   pr := pg_temp.projeto(c, 'Prospecção', 'Comercial');
   perform pg_temp.tarefa(pr, 'Entrar em contato para refazer o site: está com bugs e algumas páginas não abrem', 'comercial');
 
+  c := pg_temp.cliente('Roberto Pena', '#B9A44C', 'Roberto Pena (rádio FM)', 'Já tem microfone e computador em casa.');
+  pr := pg_temp.projeto(c, 'Lives simultâneas', 'Proposta', 'ativo',
+    'Lives 3 vezes por semana, simultâneas no Instagram, TikTok e Facebook. Moderação com layouts, popups, faixas com texto e fotos; branding da marca nova das lives; sistema para controlar a entrada dele, transmitir nos 3 canais, ver o chat dos 3 juntos e ligar a câmera (provavelmente câmera, não celular).');
+  perform pg_temp.tarefa(pr, 'Criar o projeto de apresentação das lives', 'criacao');
+
   -- ---------------- Projeto pessoal: acompanhante de bebês (sem cliente) ----------------
   pr := pg_temp.projeto(null, 'Acompanhante de bebês de até 1 ano (Ourinhos)', 'Iniciativa pública', 'ativo',
     'Pedido à Secretaria de Saúde e minuta de projeto para a Câmara de Ourinhos.');
