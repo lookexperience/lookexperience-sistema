@@ -11,6 +11,7 @@ import * as calendario from './views/calendario.js';
 import * as clientes from './views/clientes.js';
 import * as projetos from './views/projetos.js';
 import * as equipe from './views/equipe.js';
+import * as apresentacoes from './views/apresentacoes.js';
 import * as sobre from './views/sobre.js';
 
 // Telas da fase 1. "modulo" é a permissão que libera a tela.
@@ -20,6 +21,7 @@ const ROTAS = [
   { rota: 'calendario', nome: 'Calendário', modulo: 'tarefas', icone: 'calendario', view: calendario },
   { rota: 'clientes', nome: 'Clientes', modulo: 'clientes', icone: 'clientes', view: clientes },
   { rota: 'projetos', nome: 'Projetos', modulo: 'projetos', icone: 'projetos', view: projetos },
+  { rota: 'apresentacoes', nome: 'Apresentações', modulo: null, icone: 'apresentacao', view: apresentacoes },
   { rota: 'equipe', nome: 'Equipe e acessos', modulo: 'equipe', icone: 'equipe', view: equipe },
   { rota: 'sobre', nome: 'Sobre o sistema', modulo: null, icone: 'sobre', view: sobre },
 ];

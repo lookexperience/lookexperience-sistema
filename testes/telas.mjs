@@ -99,10 +99,10 @@ await teste('Site envia a política de segurança (CSP) do Netlify', async () =>
 });
 
 await teste('Admin: sistema abre e mostra o menu completo', async () => {
-  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Equipe e acessos'], 'menu');
+  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Apresentações', 'Equipe e acessos'], 'menu');
 });
 
-for (const rota of ['visao-geral', 'atividades', 'calendario', 'clientes', 'projetos', 'equipe', 'sobre']) {
+for (const rota of ['visao-geral', 'atividades', 'calendario', 'clientes', 'projetos', 'apresentacoes', 'equipe', 'sobre']) {
   await teste(`Admin: tela "${rota}" abre sem erro`, async () => {
     await ir(rota);
     confere(!(await p.locator('#pagina .erro').count()), 'apareceu mensagem de erro');
@@ -391,7 +391,7 @@ await teste('Admin: troca a senha de acesso (Enter salva, sem pôr a senha no en
 await comoUsuario('u-marina');
 
 await teste('Gerente: menu sem Equipe e acessos', async () => {
-  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos'], 'menu');
+  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Apresentações'], 'menu');
 });
 
 await teste('Gerente: recebeu o aviso da menção', async () => {
@@ -446,8 +446,8 @@ await teste('Gerente: cria projeto', async () => {
 // =====================================================================
 await comoUsuario('u-rafa');
 
-await teste('Freelancer: menu só com Visão geral, Atividades e Calendário', async () => {
-  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário'], 'menu');
+await teste('Freelancer: menu só com Visão geral, Atividades, Calendário e Apresentações', async () => {
+  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Apresentações'], 'menu');
 });
 
 await teste('Freelancer: vê só as tarefas dele', async () => {
@@ -492,7 +492,7 @@ await teste('Freelancer: clicar num dia vazio do calendário não abre nada', as
 // =====================================================================
 await teste('Conta liberada pelo admin entra no sistema', async () => {
   await comoUsuario('u-novo');
-  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário'], 'menu');
+  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Apresentações'], 'menu');
 });
 
 await teste('Conta desativada vê "Conta desativada"', async () => {
@@ -581,7 +581,7 @@ await teste('Ataque: código escondido em nomes, textos e cores não é executad
   const injetados = () => p.evaluate(() => [...document.querySelectorAll('[data-xss]')].map((e) => e.getAttribute('data-xss')).concat(window.__xss ?? []));
   const achados = new Set();
   const anotar = async () => (await injetados()).forEach((x) => achados.add(x));
-  for (const rota of ['visao-geral', 'atividades', 'calendario', 'clientes', 'projetos', 'equipe', 'sobre']) {
+  for (const rota of ['visao-geral', 'atividades', 'calendario', 'clientes', 'projetos', 'apresentacoes', 'equipe', 'sobre']) {
     await ir(rota); await anotar();
   }
   await ir('calendario'); await p.click('[data-aba=postagens]'); await anotar();
@@ -595,6 +595,52 @@ await teste('Ataque: código escondido em nomes, textos e cores não é executad
   // Imagens com src=x quebradas geram erro no console; aqui só importa se o código rodou.
   errosDaPagina = errosDaPagina.filter((e) => !/Failed to load resource/.test(e));
   igual([...achados].sort(), [], 'código injetado apareceu ou rodou em');
+});
+
+// ---------- Apresentações (Word vira slides) ----------
+await teste('Apresentações: o modelo de Word vira slides no padrão LOOK', async () => {
+  await comoUsuario('u-pablo');
+  await ir('apresentacoes');
+  await p.setInputFiles('#lk-arquivo', join(RAIZ, 'modelos', 'modelo-apresentacao-look.docx'));
+  await p.waitForSelector('#lk-grade .lk-slide');
+  await p.waitForTimeout(300);
+  const tipos = await p.$$eval('#lk-grade .lk-slide', (els) => els.map((e) => e.className.replace('lk-slide ', '')));
+  igual(tipos.length, 14, 'quantidade de slides');
+  confere(tipos[0] === 'lk-capa' && tipos[tipos.length - 1] === 'lk-fim', 'capa no começo e Obrigado no fim');
+  confere(await p.locator('#lk-grade .lk-cartoes').count() === 2, 'tabelas pequenas viram cartões');
+  confere(await p.locator('#lk-grade .lk-etapas .lk-etapa').count() === 5, 'etapas 01 | ... viram 5 cartões');
+  confere(await p.locator('#lk-grade .lk-aceite .lk-campo').count() === 3, 'aceite com 3 linhas para assinar');
+  confere(await p.locator('#lk-grade .lk-notas').count() >= 1, 'notas guardadas fora do slide');
+  // Nada passa da borda do slide.
+  const vazando = await p.$$eval('#lk-grade .lk-corpo', (els) => els.filter((e) => e.scrollHeight > e.clientHeight + 2).length);
+  igual(vazando, 0, 'slides com texto cortado');
+  await p.screenshot({ path: join(CAPTURAS, 'apresentacoes.png') });
+  // Modo apresentação abre, anda com a seta e fecha com o botão.
+  await p.evaluate(() => { Element.prototype.requestFullscreen = () => Promise.resolve(); });
+  await p.click('#lk-apresentar');
+  await p.keyboard.press('ArrowRight');
+  igual(await p.locator('.lk-palco .lk-slide.lk-ativo').evaluate((e) => [...e.parentNode.querySelectorAll('.lk-slide')].indexOf(e)), 1, 'slide depois da seta');
+  await p.click('.lk-fechar');
+  igual(await p.locator('.lk-palco').count(), 0, 'modo apresentação fechado');
+});
+
+await teste('Apresentações: arquivo que não é Word mostra aviso', async () => {
+  await ir('apresentacoes');
+  await p.setInputFiles('#lk-arquivo', { name: 'texto.doc', mimeType: 'application/msword', buffer: Buffer.from('x') });
+  confere((await p.textContent('#lk-erro')).includes('.docx'), 'aviso de formato antigo');
+  await p.setInputFiles('#lk-arquivo', { name: 'falso.docx', mimeType: 'application/octet-stream', buffer: Buffer.from('não é zip') });
+  await p.waitForFunction(() => document.querySelector('#lk-erro').textContent.length > 0);
+});
+
+await teste('Apresentações: código escondido no Word não roda', async () => {
+  await ir('apresentacoes');
+  await p.setInputFiles('#lk-arquivo', join(RAIZ, 'testes', 'apresentacao-ataque.docx'));
+  await p.waitForSelector('#lk-grade .lk-slide');
+  await p.evaluate(() => { Element.prototype.requestFullscreen = () => Promise.resolve(); });
+  await p.click('#lk-apresentar'); await p.keyboard.press('n'); await p.waitForTimeout(150);
+  const achados = await p.evaluate(() => [...document.querySelectorAll('[data-xss], script:not([src]), svg[onload], img[onerror]')].length + (window.__xss ? 1 : 0));
+  await p.click('.lk-fechar');
+  igual(achados, 0, 'elementos injetados');
 });
 
 // ---------- Resultado ----------
