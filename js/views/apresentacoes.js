@@ -3,7 +3,7 @@
 import { esc, $, avisar } from '../util.js';
 import { lerDocx } from '../apresentacao/docx.js';
 import {
-  montarApresentacao, desenharSlide, ajustarTamanhos, gerarArquivo, nomeDoArquivo, apresentador,
+  montarApresentacao, desenharSlide, comEscala, ajustarTamanhos, gerarArquivo, nomeDoArquivo, apresentador,
   CSS_SLIDES, CSS_PALCO, LARGURA,
 } from '../apresentacao/slides.js';
 
@@ -55,7 +55,6 @@ function prepararEstilo() {
   document.head.append(el);
 }
 
-const comEscala = (html, e) => html.replace('<section class="lk-slide', `<section style="--e:${e ?? 1}" class="lk-slide`);
 const slidesHtml = () => atual.apresentacao.slides.map((s, k) => comEscala(desenharSlide(s, RECURSOS), atual.escalas[k])).join('');
 
 const GUIA = [
@@ -153,7 +152,7 @@ async function mostrar() {
   new ResizeObserver(escalar).observe(grade);
   await esperarImagens(grade);
   atual.escalas = ajustarTamanhos([...grade.querySelectorAll('.lk-slide')]);
-  atual.escalas.forEach((e, k) => {
+  atual.escalas.forEach(({ e }, k) => {
     if (e < 0.9) grade.querySelector(`[data-reduzido="${k}"]`).textContent = `texto reduzido para ${Math.round(e * 100)}% para caber`;
   });
 

@@ -350,7 +350,13 @@ export function ajustarTamanhos(elementos) {
     let e = el.classList.contains('lk-conteudo') && !el.classList.contains('lk-aceite') ? 1.25 : 1;
     el.style.setProperty('--e', e);
     while (transborda() && e > 0.56) { e = Math.round((e - 0.05) * 100) / 100; el.style.setProperty('--e', e); }
-    return e;
+    // Palavras grandes (nome da etapa, número do cartão) diminuem sozinhas até caber na largura do cartão.
+    const largas = [...el.querySelectorAll('.lk-nome, .lk-grande')];
+    const vaza = () => largas.some((c) => c.scrollWidth > c.clientWidth + 1);
+    let n = 1;
+    el.style.setProperty('--n', n);
+    while (vaza() && n > 0.5) { n = Math.round((n - 0.04) * 100) / 100; el.style.setProperty('--n', n); }
+    return { e, n };
   });
 }
 
@@ -397,9 +403,9 @@ export const CSS_SLIDES = `
 .lk-cartao{background:#17171B;border-radius:16px;padding:calc(40px*var(--e));display:flex;flex-direction:column;justify-content:center;gap:calc(12px*var(--e));overflow:hidden;min-height:0}
 .lk-rotulo{font-size:24px;letter-spacing:4px;text-transform:uppercase;color:#B8955A;font-weight:700}
 .lk-grande{font-family:'Anton',Impact,sans-serif;line-height:1;color:#F5F3EE}
-.lk-g .lk-grande{font-size:calc(110px*var(--e))}
-.lk-m .lk-grande{font-size:calc(88px*var(--e))}
-.lk-p .lk-grande{font-size:calc(68px*var(--e))}
+.lk-g .lk-grande{font-size:calc(110px*var(--e)*var(--n,1))}
+.lk-m .lk-grande{font-size:calc(88px*var(--e)*var(--n,1))}
+.lk-p .lk-grande{font-size:calc(68px*var(--e)*var(--n,1))}
 .lk-desc{font-size:calc(28px*var(--e));color:#C9C5BC;line-height:1.4}
 .lk-p .lk-desc{font-size:calc(26px*var(--e))}
 .lk-tabela{width:100%;border-collapse:collapse}
@@ -421,7 +427,7 @@ export const CSS_SLIDES = `
 .lk-etapas{flex:1;min-height:0;display:grid;gap:24px;grid-auto-rows:1fr}
 .lk-etapa{background:#17171B;border-radius:16px;padding:calc(36px*var(--e)) calc(32px*var(--e));display:flex;flex-direction:column;gap:calc(16px*var(--e));overflow:hidden;min-height:0;border-top:4px solid #B8955A}
 .lk-numero{font-family:'Anton',Impact,sans-serif;font-size:calc(80px*var(--e));line-height:1;color:#5A5750}
-.lk-nome{font-size:calc(38px*var(--e))}
+.lk-nome{font-size:calc(38px*var(--e)*var(--n,1));white-space:nowrap}
 .lk-etapa .lk-desc{font-size:calc(26px*var(--e))}
 .lk-campos{display:grid;grid-template-columns:1.6fr 1fr;gap:96px 72px;margin-top:40px}
 .lk-campo{display:flex;flex-direction:column;gap:16px}
@@ -498,11 +504,14 @@ export const CSS_PALCO = `
 }
 `;
 
+// Grava no slide os tamanhos calculados por ajustarTamanhos.
+export const comEscala = (html, t) => html.replace('<section class="lk-slide', `<section style="--e:${t?.e ?? 1};--n:${t?.n ?? 1}" class="lk-slide`);
+
 // ---------- Arquivo para baixar ----------
 // Um .html só, com fontes e imagens dentro: abre em qualquer navegador,
 // apresenta com as setas e vira PDF pelo "Imprimir > Salvar como PDF".
 export function gerarArquivo(apresentacao, recursos, escalas, fontes) {
-  const slides = apresentacao.slides.map((s, k) => desenharSlide(s, recursos).replace('<section class="lk-slide', `<section style="--e:${escalas[k] ?? 1}" class="lk-slide`)).join('\n');
+  const slides = apresentacao.slides.map((s, k) => comEscala(desenharSlide(s, recursos), escalas[k])).join('\n');
   const faces = fontes.map((f) => `@font-face{font-family:'${f.familia}';src:url(${f.url}) format('woff2');font-weight:${f.peso};font-display:block}`).join('\n');
   return `<!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
