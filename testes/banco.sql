@@ -33,15 +33,21 @@ $$;
 -- Pessoas: A admin, G gerente, F freelancer, N conta nova, D desativada
 -- ---------------------------------------------------------------------
 insert into auth.users (id, email, raw_user_meta_data) values
-  ('00000000-0000-0000-0000-0000000000aa', 'pablo@look', '{"nome":"Pablo Caetano"}'),
-  ('00000000-0000-0000-0000-0000000000bb', 'marina@look', '{"nome":"Marina Gerente"}'),
-  ('00000000-0000-0000-0000-0000000000cc', 'rafa@look', '{"nome":"Rafa Freela"}'),
-  ('00000000-0000-0000-0000-0000000000dd', 'nova@look', '{"nome":"Nova Conta"}'),
-  ('00000000-0000-0000-0000-0000000000ee', 'saiu@look', '{"nome":"Ex Funcionario"}');
+  ('00000000-0000-0000-0000-0000000000aa', 'pablo@look', '{"nome":"Pablo Caetano"}');
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-0000000000bb', 'marina@look', '{"nome":"Marina Gerente","codigo":"L@@k"}');
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-0000000000cc', 'rafa@look', '{"nome":"Rafa Freela","codigo":"L@@k"}');
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-0000000000dd', 'nova@look', '{"nome":"Nova Conta","codigo":"L@@k"}');
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-0000000000ee', 'saiu@look', '{"nome":"Ex Funcionario","codigo":"L@@k"}');
 
 select teste.ok((select admin from perfis where email = 'pablo@look'), 'Primeira conta vira administrador');
 select teste.ok((select count(*) = 0 from perfis where admin and email <> 'pablo@look'), 'As outras contas nascem sem ser administrador');
 select teste.ok((select count(*) = 0 from permissoes), 'Contas novas nascem sem nenhuma permissão');
+select teste.ok((select count(*) = 5 from perfis), 'Com a senha de acesso certa, a conta é criada');
+select teste.ok((select count(*) = 0 from auth.users where raw_user_meta_data ? 'codigo'), 'A senha de acesso digitada não fica guardada na conta');
 
 -- ---------------------------------------------------------------------
 -- Administrador configura a equipe
@@ -194,7 +200,7 @@ select teste.ok(teste.linhas($$update perfis set id = '00000000-0000-0000-0000-0
 
 -- Cadastro tentando nascer administrador pelos dados extras do formulário
 reset role;
-insert into auth.users (id, email, raw_user_meta_data) values ('00000000-0000-0000-0000-0000000000ff', 'esperto@x', '{"nome":"Esperto","admin":true,"ativo":true}');
+insert into auth.users (id, email, raw_user_meta_data) values ('00000000-0000-0000-0000-0000000000ff', 'esperto@x', '{"nome":"Esperto","admin":true,"ativo":true,"codigo":"L@@k"}');
 select teste.ok((select not admin from perfis where email = 'esperto@x'), 'Ataque: cadastro com "admin" nos dados não vira administrador');
 set role authenticated;
 
@@ -236,6 +242,57 @@ insert into avisos (usuario_id, texto) values ('00000000-0000-0000-0000-00000000
 set role authenticated;
 select teste.como('00000000-0000-0000-0000-0000000000ee');
 select teste.ok((select count(*) = 0 from avisos), 'Ataque: conta desativada não lê avisos antigos');
+
+-- Estranho tentando criar conta sem a senha de acesso (direto pela API)
+reset role;
+select teste.ok(teste.linhas($$insert into auth.users (email, raw_user_meta_data) values ('estranho@x', '{"nome":"Estranho"}')$$) = -1, 'Ataque: cadastro sem senha de acesso é recusado');
+select teste.ok(teste.linhas($$insert into auth.users (email, raw_user_meta_data) values ('estranho@x', '{"nome":"Estranho","codigo":"l@@k"}')$$) = -1, 'Ataque: senha de acesso com letra trocada é recusada');
+select teste.ok(teste.linhas($$insert into auth.users (email, raw_user_meta_data) values ('estranho@x', '{"nome":"Estranho","codigo":"L@@k "}')$$) = -1, 'Ataque: senha de acesso com espaço a mais é recusada');
+select teste.ok(teste.linhas($$insert into auth.users (email, raw_user_meta_data) values ('estranho@x', '{"nome":"Estranho","codigo":{"a":1}}')$$) = -1, 'Ataque: senha de acesso em formato estranho é recusada');
+select teste.ok(teste.linhas($$insert into auth.users (email, raw_user_meta_data) values ('estranho@x', null)$$) = -1, 'Ataque: cadastro sem nenhum dado extra é recusado');
+select teste.ok((select count(*) = 0 from perfis where email = 'estranho@x'), 'Nenhuma conta de estranho foi criada');
+set role authenticated;
+
+-- Ninguém lê nem troca a senha de acesso, só o administrador troca
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok((select count(*) = 0 from ajustes), 'Ataque: gerente não lê a senha de acesso (nem embaralhada)');
+select teste.ok(teste.linhas($$update ajustes set valor = 'x'$$) = 0 and teste.linhas($$insert into ajustes values ('senha_acesso_hash2', 'x')$$) = -1, 'Ataque: gerente não grava na tabela de ajustes');
+select teste.ok(teste.linhas($$select public.mudar_senha_acesso('minhasenha')$$) = -1, 'Ataque: gerente não troca a senha de acesso');
+select teste.ok(teste.linhas($$select public.hash_senha_acesso('L@@k')$$) = -1, 'Ataque: ninguém usa o embaralhador da senha para testar senhas');
+select teste.ok(teste.linhas($$select public.usuario_ve_tarefa('00000000-0000-0000-0000-0000000000cc', '30000000-0000-0000-0000-000000000001')$$) = -1, 'Ataque: ninguém pergunta ao banco quem vê qual tarefa');
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.ok(teste.linhas($$select public.mudar_senha_acesso('abc')$$) = -1, 'Senha de acesso curta demais é recusada');
+select teste.ok(teste.linhas($$select public.mudar_senha_acesso('Nova#2026')$$) = 1, 'Administrador troca a senha de acesso');
+reset role;
+select teste.ok(teste.linhas($$insert into auth.users (email, raw_user_meta_data) values ('velha@x', '{"nome":"Velha","codigo":"L@@k"}')$$) = -1, 'Depois da troca, a senha antiga não cria conta');
+select teste.ok(teste.linhas($$insert into auth.users (email, raw_user_meta_data) values ('nova2@x', '{"nome":"Nova Dois","codigo":"Nova#2026"}')$$) = 1, 'Depois da troca, a senha nova cria conta');
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select public.mudar_senha_acesso('L@@k');
+
+-- Ligando tarefa ou projeto a algo que a pessoa não enxerga (para passar a ver)
+reset role;
+insert into projetos (id, nome) values ('20000000-0000-0000-0000-0000000000f1', 'Projeto secreto');
+insert into clientes (id, nome) values ('10000000-0000-0000-0000-0000000000f1', 'Cliente secreto');
+insert into permissoes values ('00000000-0000-0000-0000-0000000000cc', 'projetos', false, true, true, false, 'proprias');
+update permissoes set criar = true where usuario_id = '00000000-0000-0000-0000-0000000000cc' and modulo = 'tarefas';
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000cc');
+select teste.ok(teste.linhas($$insert into tarefas (titulo, setor, projeto_id, responsavel_id) values ('Espiã', 'execucao', '20000000-0000-0000-0000-0000000000f1', '00000000-0000-0000-0000-0000000000cc')$$) = -1, 'Ataque: tarefa não entra num projeto que a pessoa não vê');
+select teste.ok((select count(*) = 0 from projetos where id = '20000000-0000-0000-0000-0000000000f1'), 'O projeto secreto continua invisível');
+select teste.ok(teste.linhas($$insert into projetos (nome, cliente_id) values ('Espião', '10000000-0000-0000-0000-0000000000f1')$$) = -1, 'Ataque: projeto não entra num cliente que a pessoa não vê');
+select teste.ok(teste.linhas($$insert into tarefas (titulo, setor, responsavel_id) values ('Tarefa normal', 'execucao', '00000000-0000-0000-0000-0000000000cc')$$) = 1, 'Tarefa sem projeto continua sendo criada normalmente');
+reset role;
+delete from permissoes where usuario_id = '00000000-0000-0000-0000-0000000000cc' and modulo = 'projetos';
+update permissoes set criar = false where usuario_id = '00000000-0000-0000-0000-0000000000cc' and modulo = 'tarefas';
+update permissoes set ver = false where usuario_id = '00000000-0000-0000-0000-0000000000bb' and modulo = 'projetos';
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok(teste.linhas($$update tarefas set projeto_id = '20000000-0000-0000-0000-0000000000f1' where id = '30000000-0000-0000-0000-000000000001'$$) = -1, 'Ataque: gerente não move tarefa para projeto invisível a ela');
+select teste.ok(teste.linhas($$update tarefas set projeto_id = '20000000-0000-0000-0000-000000000001' where id = '30000000-0000-0000-0000-000000000001'$$) = 1, 'Gerente continua movendo tarefa entre projetos que vê');
+reset role;
+update permissoes set ver = true where usuario_id = '00000000-0000-0000-0000-0000000000bb' and modulo = 'projetos';
+set role authenticated;
 
 -- Visitante sem login chamando as funções do banco direto pela API
 reset role;

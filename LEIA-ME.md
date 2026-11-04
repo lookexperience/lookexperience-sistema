@@ -30,6 +30,7 @@ A chave pública pode ficar no código. Quem protege os dados são as regras do 
 
 ## Permissões
 
+- Para criar conta é preciso a **senha de acesso da LOOK** (o administrador passa para a pessoa). O banco confere essa senha, então não dá para pular pela API. Quem não sabe a senha não consegue nem criar a conta. O administrador troca a senha em **Equipe e acessos > Trocar senha de acesso**; quem já tem conta continua entrando normalmente.
 - Cada pessoa cria a própria conta na tela de entrada e fica "Aguardando liberação".
 - O administrador abre **Equipe e acessos**, escolhe cargo e setores e marca, módulo por módulo, o que a pessoa pode **ver, criar, editar e apagar**.
 - Em tarefas, também escolhe o alcance: só as dela, as dos setores dela, ou todas.

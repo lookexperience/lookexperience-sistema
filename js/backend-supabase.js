@@ -20,6 +20,7 @@ function traduzirErro(msg) {
   if (/Invalid login credentials/i.test(msg)) return 'E-mail ou senha incorretos.';
   if (/Email not confirmed/i.test(msg)) return 'Confirme seu e-mail pelo link que enviamos antes de entrar.';
   if (/already registered/i.test(msg)) return 'Esse e-mail já tem conta. Use "Entrar".';
+  if (/Database error saving new user/i.test(msg)) return 'Não deu para criar a conta. Confira a senha de acesso da LOOK com o administrador.';
   if (/Password should be/i.test(msg)) return 'A senha precisa ter pelo menos 6 caracteres.';
   const espera = msg.match(/only request this after (\d+) seconds/i);
   if (espera) return `Por segurança, espere ${espera[1]} segundos antes de tentar de novo.`;
@@ -44,8 +45,9 @@ export async function entrar(email, senha) {
   checar(await sb.auth.signInWithPassword({ email, password: senha }));
 }
 
-export async function criarConta(nome, email, senha) {
-  const data = checar(await sb.auth.signUp({ email, password: senha, options: { data: { nome } } }));
+export async function criarConta(nome, email, senha, codigo) {
+  // A senha de acesso vai junto e é conferida pelo banco (schema.sql), que não a guarda.
+  const data = checar(await sb.auth.signUp({ email, password: senha, options: { data: { nome, codigo } } }));
   return { precisaConfirmar: !data.session };
 }
 
@@ -71,6 +73,10 @@ export async function atualizar(tabela, id, mudancas) {
 export async function apagar(tabela, id) {
   const linhas = checar(await sb.from(tabela).delete().eq('id', id).select('id'));
   if (!linhas.length) throw new Error('Você não tem permissão para isso.');
+}
+
+export async function mudarSenhaAcesso(nova) {
+  checar(await sb.rpc('mudar_senha_acesso', { p_nova: nova }));
 }
 
 export async function salvarPermissoes(usuarioId, linhas) {

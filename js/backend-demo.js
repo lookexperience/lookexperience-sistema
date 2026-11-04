@@ -236,6 +236,12 @@ export async function apagar(tabela, id) {
   salvar();
 }
 
+export async function mudarSenhaAcesso(nova) {
+  const s = await sessao();
+  if (!s?.perfil.admin) negar();
+  if ((nova ?? '').length < 4 || nova.length > 100) throw new Error('A senha de acesso precisa ter de 4 a 100 caracteres.');
+}
+
 export async function salvarPermissoes(usuarioId, linhas) {
   const s = await sessao();
   if (!s.perfil.admin) negar();

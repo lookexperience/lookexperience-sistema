@@ -372,6 +372,19 @@ await teste('Admin: libera a conta nova como Freelancer', async () => {
   confere((await p.locator('tr[data-id=u-novo]').textContent()).includes('2 módulos'), 'acesso não aparece na lista');
 });
 
+await teste('Admin: troca a senha de acesso (Enter salva, sem pôr a senha no endereço)', async () => {
+  await ir('equipe');
+  await p.click('#mudar-senha-acesso');
+  await p.fill('[name=nova]', 'abc');
+  await p.click('#salvar-senha-acesso'); await p.waitForTimeout(150);
+  confere(await p.locator('#form-senha-acesso').count(), 'aceitou senha de 3 letras');
+  await p.fill('[name=nova]', 'Nova#2026');
+  await p.press('[name=nova]', 'Enter'); await p.waitForTimeout(250);
+  confere(!p.url().includes('Nova'), `senha foi para o endereço: ${p.url()}`);
+  confere(!(await p.locator('#form-senha-acesso').count()), 'janela não fechou');
+  confere((await textoToast()).includes('Senha de acesso trocada'), 'sem aviso de troca');
+});
+
 // =====================================================================
 // GERENTE (Marina: setores criação e execução)
 // =====================================================================
@@ -507,6 +520,21 @@ await teste('Conta nova sem liberação vê "Aguardando liberação"', async () 
   await p.click('#resetar-demo'); await p.waitForTimeout(300);
   await comoUsuario('u-novo');
   confere(await p.locator('h2', { hasText: 'Aguardando liberação' }).count(), 'mensagem não apareceu');
+});
+
+await teste('Tela de criar conta pede a senha de acesso da LOOK', async () => {
+  await comoUsuario('u-pablo');
+  // Sem ninguém logado (no modo demonstração não há botão Sair).
+  await p.evaluate(() => { const d = JSON.parse(localStorage.getItem('look-sistema-demo-v4')); d.usuarioAtual = null; localStorage.setItem('look-sistema-demo-v4', JSON.stringify(d)); });
+  await p.reload(); await p.waitForSelector('#form-entrada');
+  confere(!(await p.locator('[name=codigo]').count()), 'tela de entrar pede senha de acesso');
+  await p.click('#trocar');
+  const campo = p.locator('[name=codigo]');
+  confere(await campo.count(), 'campo de senha de acesso não apareceu');
+  confere(await campo.evaluate((e) => e.required && e.type === 'password'), 'campo não é obrigatório ou mostra a senha');
+  await p.click('#trocar');
+  await p.fill('[name=email]', 'contato@lookexperience.com.br'); await p.fill('[name=senha]', '123456');
+  await p.click('#form-entrada button[type=submit]'); await p.waitForSelector('.menu');
 });
 
 // =====================================================================
