@@ -365,6 +365,67 @@ delete from storage.objects where name like '20000000-0000-0000-0000-0000000000f
 select teste.ok(teste.linhas($$delete from projetos where id = '20000000-0000-0000-0000-0000000000f1'$$) = 1, 'Admin apaga o projeto secreto');
 select teste.ok((select count(*) = 0 from anexos where projeto_id = '20000000-0000-0000-0000-0000000000f1'), 'Apagar o projeto apaga os anexos dele');
 
+-- ---------------------------------------------------------------------
+-- VÁRIOS RESPONSÁVEIS por tarefa
+-- ---------------------------------------------------------------------
+reset role;
+delete from avisos;
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.ok(teste.linhas($$insert into tarefas (id, titulo, setor, responsaveis) values ('30000000-0000-0000-0000-0000000000e1', 'Gravação a dois', 'execucao', array['00000000-0000-0000-0000-0000000000bb', '00000000-0000-0000-0000-0000000000cc', '00000000-0000-0000-0000-0000000000bb', null]::uuid[])$$) = 1, 'Admin cria tarefa com dois responsáveis');
+select teste.ok((select responsaveis = array['00000000-0000-0000-0000-0000000000bb', '00000000-0000-0000-0000-0000000000cc']::uuid[] and responsavel_id = '00000000-0000-0000-0000-0000000000bb' from tarefas where id = '30000000-0000-0000-0000-0000000000e1'), 'Lista sem repetidos nem vazios, e o primeiro vira o responsável principal');
+reset role;
+select teste.ok((select count(*) = 2 from avisos where tarefa_id = '30000000-0000-0000-0000-0000000000e1'), 'Os dois responsáveis recebem aviso');
+set role authenticated;
+
+select teste.como('00000000-0000-0000-0000-0000000000cc');
+select teste.ok((select count(*) = 1 from tarefas where id = '30000000-0000-0000-0000-0000000000e1'), 'Freelancer vê a tarefa em que é um dos responsáveis');
+select teste.ok(teste.linhas($$update tarefas set status = 'fazendo' where id = '30000000-0000-0000-0000-0000000000e1'$$) = 1, 'Freelancer (um dos responsáveis) muda o status');
+update tarefas set responsaveis = array['00000000-0000-0000-0000-0000000000cc']::uuid[] where id = '30000000-0000-0000-0000-0000000000e1';
+select teste.ok((select responsaveis = array['00000000-0000-0000-0000-0000000000bb', '00000000-0000-0000-0000-0000000000cc']::uuid[] from tarefas where id = '30000000-0000-0000-0000-0000000000e1'), 'Ataque: freelancer sem "editar" não tira os outros responsáveis');
+
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+reset role;
+delete from avisos;
+set role authenticated;
+update tarefas set responsaveis = array['00000000-0000-0000-0000-0000000000bb', '00000000-0000-0000-0000-0000000000cc', '00000000-0000-0000-0000-0000000000aa']::uuid[] where id = '30000000-0000-0000-0000-0000000000e1';
+update tarefas set responsaveis = array['00000000-0000-0000-0000-0000000000bb', '00000000-0000-0000-0000-0000000000cc', '00000000-0000-0000-0000-0000000000dd']::uuid[] where id = '30000000-0000-0000-0000-0000000000e1';
+reset role;
+select teste.ok((select array_agg(usuario_id) = array['00000000-0000-0000-0000-0000000000dd']::uuid[] from avisos where tarefa_id = '30000000-0000-0000-0000-0000000000e1'), 'Só quem entrou na lista recebe aviso (e o admin não avisa a si mesmo)');
+delete from avisos;
+set role authenticated;
+select teste.ok(teste.linhas($$insert into comentarios (tarefa_id, texto) values ('30000000-0000-0000-0000-0000000000e1', 'Combinado o horário')$$) = 1, 'Admin comenta na tarefa de vários responsáveis');
+reset role;
+select teste.ok((select count(*) = 2 from avisos where tarefa_id = '30000000-0000-0000-0000-0000000000e1' and usuario_id in ('00000000-0000-0000-0000-0000000000bb', '00000000-0000-0000-0000-0000000000cc')), 'Comentário avisa todos os responsáveis que veem a tarefa');
+select teste.ok((select count(*) = 0 from avisos where usuario_id = '00000000-0000-0000-0000-0000000000dd'), 'Conta sem liberação na lista não recebe o título da tarefa');
+set role authenticated;
+
+select teste.ok(teste.linhas($$update tarefas set responsaveis = array['00000000-0000-0000-0000-0000000000aa', '00000000-0000-0000-0000-0000000000bb', '00000000-0000-0000-0000-0000000000cc', '00000000-0000-0000-0000-0000000000dd', '00000000-0000-0000-0000-0000000000ee', '00000000-0000-0000-0000-0000000000ff', '00000000-0000-0000-0000-0000000000aa']::uuid[] where id = '30000000-0000-0000-0000-0000000000e1'$$) = 1, 'Lista com 6 pessoas (e um repetido) é aceita');
+select teste.ok(teste.linhas($$update tarefas set responsaveis = array(select gen_random_uuid() from generate_series(1, 11)) where id = '30000000-0000-0000-0000-0000000000e1'$$) = -1, 'Mais de 10 responsáveis é recusado');
+select teste.ok(teste.linhas($$update tarefas set responsaveis = array[gen_random_uuid()] where id = '30000000-0000-0000-0000-0000000000e1'$$) = -1, 'Ataque: responsável que não existe na equipe é recusado');
+select teste.ok(teste.linhas($$update tarefas set responsavel_id = '00000000-0000-0000-0000-0000000000cc' where id = '30000000-0000-0000-0000-0000000000e1'$$) = 1, 'Tela antiga (só um responsável) continua salvando');
+select teste.ok((select responsaveis = array['00000000-0000-0000-0000-0000000000cc']::uuid[] from tarefas where id = '30000000-0000-0000-0000-0000000000e1'), 'Tela antiga troca a lista pela pessoa escolhida');
+select teste.ok(teste.linhas($$update tarefas set responsaveis = '{}' where id = '30000000-0000-0000-0000-0000000000e1'$$) = 1, 'Tarefa pode ficar sem responsável');
+select teste.ok((select responsavel_id is null from tarefas where id = '30000000-0000-0000-0000-0000000000e1'), 'Sem lista, o responsável principal fica vazio');
+
+-- Gerente (escopo setor) com tarefa de outro setor em que ela é uma das responsáveis
+select teste.ok(teste.linhas($$insert into tarefas (id, titulo, setor, responsaveis) values ('30000000-0000-0000-0000-0000000000e2', 'Reunião comercial', 'comercial', array['00000000-0000-0000-0000-0000000000aa', '00000000-0000-0000-0000-0000000000bb']::uuid[])$$) = 1, 'Admin cria tarefa do comercial com a gerente junto');
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok((select count(*) = 1 from tarefas where id = '30000000-0000-0000-0000-0000000000e2'), 'Gerente vê tarefa de outro setor por ser uma das responsáveis');
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+
+-- Atualização do banco antigo: tarefas só com responsavel_id ganham a lista
+reset role;
+alter table tarefas disable trigger user;
+update tarefas set responsaveis = '{}' where id = '30000000-0000-0000-0000-000000000001';
+alter table tarefas enable trigger user;
+delete from avisos;
+\ir ../supabase/schema.sql
+\o /dev/null
+select teste.ok((select responsaveis = array['00000000-0000-0000-0000-0000000000bb']::uuid[] from tarefas where id = '30000000-0000-0000-0000-000000000001'), 'Rodar o schema novo copia o responsável antigo para a lista');
+select teste.ok((select count(*) = 0 from avisos), 'A cópia não gera avisos repetidos');
+set role authenticated;
+
 -- Visitante sem login chamando as funções do banco direto pela API
 reset role;
 set role anon;

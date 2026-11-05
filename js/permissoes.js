@@ -8,6 +8,10 @@ export function pode(sessao, modulo, acao = 'ver') {
   return !!sessao.permissoes[modulo]?.[acao];
 }
 
+// Lista de responsáveis da tarefa. Tarefas antigas só têm "responsavel_id".
+export const responsaveisDe = (tarefa) => tarefa?.responsaveis ?? (tarefa?.responsavel_id ? [tarefa.responsavel_id] : []);
+export const ehResponsavel = (tarefa, id) => responsaveisDe(tarefa).includes(id);
+
 export function escopoTarefas(sessao) {
   if (sessao?.perfil?.admin) return 'todas';
   return sessao?.permissoes.tarefas?.escopo ?? 'proprias';
@@ -18,14 +22,14 @@ export function podeVerTarefa(sessao, tarefa) {
   const eu = sessao.perfil.id;
   const escopo = escopoTarefas(sessao);
   return escopo === 'todas'
-    || tarefa.responsavel_id === eu
+    || ehResponsavel(tarefa, eu)
     || tarefa.criado_por === eu
     || (escopo === 'setor' && sessao.perfil.setores.includes(tarefa.setor));
 }
 
 export function podeEditarTarefa(sessao, tarefa) {
   return podeVerTarefa(sessao, tarefa)
-    && (pode(sessao, 'tarefas', 'editar') || tarefa.responsavel_id === sessao.perfil.id);
+    && (pode(sessao, 'tarefas', 'editar') || ehResponsavel(tarefa, sessao.perfil.id));
 }
 
 export function temAlgumAcesso(sessao) {

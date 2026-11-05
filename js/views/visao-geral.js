@@ -1,4 +1,4 @@
-import { pode } from '../permissoes.js';
+import { pode, ehResponsavel } from '../permissoes.js';
 import { esc, hoje, paraData, mesCurto, diaDaTarefa, estaAtrasada, chaveDia } from '../util.js';
 import { etiquetaSetor, nomeClienteDaTarefa, quando, ligarTarefas, filtros } from './comum.js';
 
@@ -7,7 +7,7 @@ export async function render(el, ctx) {
   const s = estado.sessao;
   const eu = s.perfil.id;
   const abertas = estado.tarefas.filter((t) => t.status !== 'feito');
-  const minhas = abertas.filter((t) => t.responsavel_id === eu);
+  const minhas = abertas.filter((t) => ehResponsavel(t, eu));
   const atrasadas = abertas.filter(estaAtrasada);
   const emAprovacao = abertas.filter((t) => t.status === 'em_aprovacao');
   const ativos = estado.projetos.filter((p) => p.status === 'ativo');

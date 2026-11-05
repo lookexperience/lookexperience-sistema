@@ -35,7 +35,7 @@ A chave pública pode ficar no código. Quem protege os dados são as regras do 
 - Cada pessoa cria a própria conta na tela de entrada e fica "Aguardando liberação".
 - O administrador abre **Equipe e acessos**, escolhe cargo e setores e marca, módulo por módulo, o que a pessoa pode **ver, criar, editar e apagar**.
 - Em tarefas, também escolhe o alcance: só as dela, as dos setores dela, ou todas.
-- O responsável por uma tarefa sempre pode mudar o status dela.
+- Uma tarefa pode ter **vários responsáveis** (até 10). Todos veem a tarefa, recebem os avisos dela e podem mudar o status. O primeiro marcado fica como responsável principal.
 - Para tirar alguém, desmarque "Conta ativa".
 
 ## Anexos dos projetos
