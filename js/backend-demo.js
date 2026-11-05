@@ -1,7 +1,7 @@
 // Modo demonstração: guarda tudo neste navegador e imita as regras do
 // banco, para dar para testar o sistema antes do Supabase estar ligado.
 import { MODULOS } from './config.js';
-import { pode, podeVerTarefa, podeEditarTarefa, temAlgumAcesso } from './permissoes.js';
+import { pode, podeVerTarefa, podeEditarTarefa, temAlgumAcesso, responsaveisDe } from './permissoes.js';
 import { chaveDia } from './util.js';
 import { conferirArquivo, novoIdAnexo } from './anexos.js';
 
@@ -67,12 +67,13 @@ function semente() {
     id: novoId(), projeto_id: null, titulo, descricao: '', tipo: 'tarefa', setor: 'criacao', responsavel_id: pablo,
     status: 'a_fazer', prioridade: 'normal', prazo: null, inicio: null, local: '', ordem: ordem++,
     criado_por: pablo, criado_em: agora, atualizado_em: agora, ...extra,
+    responsaveis: extra?.responsaveis ?? [extra?.responsavel_id ?? pablo],
   });
   const tarefas = [
     t('Fechar valor mensal e duração com a Lotus', { projeto_id: 'p-lotus', setor: 'comercial', prazo: diaRelativo(1), prioridade: 'urgente' }),
     t('Contrato Lotus pelo gov.br', { projeto_id: 'p-lotus', setor: 'comercial', prazo: diaRelativo(4) }),
     t('Fechar cor do nome e acabamento da medalha', { projeto_id: 'p-lotus', setor: 'criacao', status: 'fazendo', responsavel_id: marina, prazo: diaRelativo(2) }),
-    t('Gravação de produtos na loja', { projeto_id: 'p-lotus', tipo: 'gravacao', setor: 'execucao', inicio: horaRelativa(6, 14), local: 'Loja Lotus Games, Ourinhos', responsavel_id: rafa }),
+    t('Gravação de produtos na loja', { projeto_id: 'p-lotus', tipo: 'gravacao', setor: 'execucao', inicio: horaRelativa(6, 14), local: 'Loja Lotus Games, Ourinhos', responsavel_id: rafa, responsaveis: [rafa, marina] }),
     t('Editar 3 reels de lançamento', { projeto_id: 'p-lotus', setor: 'execucao', responsavel_id: rafa, prazo: diaRelativo(9) }),
     t('Calendário editorial do 1º mês', { projeto_id: 'p-lotus', setor: 'criacao', status: 'em_aprovacao', responsavel_id: marina, prazo: diaRelativo(5) }),
     t('Flambé: direção, tipografia e símbolo', { projeto_id: 'p-flambe', setor: 'criacao', status: 'fazendo', prazo: diaRelativo(-1) }),
@@ -101,6 +102,7 @@ export async function iniciar() {
     const salvo = JSON.parse(localStorage.getItem(CHAVE) || 'null');
     if (salvo?.banco) ({ banco, usuarioAtual } = salvo);
   } catch { /* sem armazenamento */ }
+  for (const t of banco?.tarefas ?? []) t.responsaveis ??= t.responsavel_id ? [t.responsavel_id] : [];
   if (!banco) { banco = semente(); usuarioAtual = 'u-pablo'; salvar(); }
 }
 
@@ -151,6 +153,15 @@ export async function listar(tabela, filtros = {}) {
   return structuredClone(banco[tabela].filter((l) => visivel(tabela, l, s) && Object.entries(filtros).every(([k, v]) => l[k] === v)));
 }
 
+// Igual ao banco: sem repetidos, até 10, todos da equipe; o primeiro é o principal.
+function arrumarResponsaveis(alvo, lista) {
+  const limpa = [...new Set((lista ?? []).filter(Boolean))];
+  if (limpa.length > 10) throw new Error('Uma tarefa pode ter no máximo 10 responsáveis.');
+  if (limpa.some((id) => !banco.perfis.some((p) => p.id === id))) throw new Error('Responsável não encontrado na equipe.');
+  alvo.responsaveis = limpa;
+  alvo.responsavel_id = limpa[0] ?? null;
+}
+
 function avisar(usuario_id, texto, tarefa_id) {
   banco.avisos.unshift({ id: novoId(), usuario_id, texto, tarefa_id, lido: false, criado_em: new Date().toISOString() });
 }
@@ -165,7 +176,8 @@ export async function inserir(tabela, dados) {
   } else if (tabela === 'tarefas') {
     if (!pode(s, 'tarefas', 'criar')) negar();
     Object.assign(linha, { criado_por: eu, atualizado_em: linha.criado_em });
-    if (linha.responsavel_id && linha.responsavel_id !== eu) avisar(linha.responsavel_id, `Nova tarefa para você: ${linha.titulo}`, linha.id);
+    arrumarResponsaveis(linha, linha.responsaveis ?? (linha.responsavel_id ? [linha.responsavel_id] : []));
+    for (const r of linha.responsaveis) if (r !== eu) avisar(r, `Nova tarefa para você: ${linha.titulo}`, linha.id);
   } else if (tabela === 'comentarios') {
     const tarefa = banco.tarefas.find((t) => t.id === linha.tarefa_id);
     if (!tarefa || !podeVerTarefa(s, tarefa)) negar();
@@ -175,7 +187,7 @@ export async function inserir(tabela, dados) {
       const primeiro = p.nome.split(' ')[0];
       const marcado = primeiro && linha.texto.toLowerCase().includes(`@${primeiro.toLowerCase()}`);
       // Igual ao banco: só avisa quem pode ver a tarefa (o aviso traz o título).
-      if ((marcado || p.id === tarefa.responsavel_id) && podeVerTarefa(sessaoDe(p.id), tarefa)) {
+      if ((marcado || responsaveisDe(tarefa).includes(p.id)) && podeVerTarefa(sessaoDe(p.id), tarefa)) {
         avisar(p.id, `${s.perfil.nome} ${marcado ? 'marcou você em' : 'comentou em'}: ${tarefa.titulo}`, tarefa.id);
       }
     }
@@ -196,8 +208,14 @@ export async function atualizar(tabela, id, mudancas) {
       mudancas = Object.fromEntries(Object.entries(mudancas).filter(([k]) => k === 'status' || k === 'ordem'));
     }
     delete mudancas.criado_por;
-    const novoResp = mudancas.responsavel_id;
-    if (novoResp && novoResp !== linha.responsavel_id && novoResp !== s.perfil.id) avisar(novoResp, `Nova tarefa para você: ${mudancas.titulo ?? linha.titulo}`, id);
+    if ('responsaveis' in mudancas || 'responsavel_id' in mudancas) {
+      const antes = responsaveisDe(linha);
+      const lista = 'responsaveis' in mudancas ? mudancas.responsaveis : (mudancas.responsavel_id ? [mudancas.responsavel_id] : []);
+      arrumarResponsaveis(mudancas, lista);
+      for (const r of mudancas.responsaveis) {
+        if (!antes.includes(r) && r !== s.perfil.id) avisar(r, `Nova tarefa para você: ${mudancas.titulo ?? linha.titulo}`, id);
+      }
+    }
     mudancas = { ...mudancas, atualizado_em: new Date().toISOString() };
   } else if (tabela === 'clientes' || tabela === 'projetos') {
     if (!pode(s, tabela, 'editar')) negar();

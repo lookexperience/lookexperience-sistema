@@ -1,5 +1,15 @@
 import { SETORES, TIPOS, CORES_CLIENTE, COR_PADRAO, nomeDe } from '../config.js';
 import { esc, iniciais, dataCurta, hora, estaAtrasada } from '../util.js';
+import { responsaveisDe, ehResponsavel } from '../permissoes.js';
+
+// Bolinhas com as iniciais dos responsáveis (até 3, depois "+N").
+export function avatares(ctx, t, vazio = '') {
+  const nomes = responsaveisDe(t).map((id) => ctx.nomePerfil(id)).filter(Boolean);
+  if (!nomes.length) return vazio;
+  const extra = nomes.length > 3 ? `<span class="avatar mais">+${nomes.length - 2}</span>` : '';
+  const mostrados = nomes.length > 3 ? nomes.slice(0, 2) : nomes;
+  return `<span class="avatares" title="${esc(nomes.join(', '))}">${mostrados.map((n) => `<span class="avatar">${esc(iniciais(n))}</span>`).join('')}${extra}</span>`;
+}
 
 export const etiquetaSetor = (setor) => `<span class="etiqueta"><span class="ponto ${setor}"></span>${nomeDe(SETORES, setor)}</span>`;
 
@@ -25,7 +35,6 @@ export function quando(t) {
 }
 
 export function cartaoTarefa(ctx, t, arrastavel = false) {
-  const responsavel = ctx.nomePerfil(t.responsavel_id);
   const tipo = t.tipo !== 'tarefa' ? `<span class="etiqueta">${nomeDe(TIPOS, t.tipo)}</span>` : '';
   return `<div class="cartao" data-tarefa="${t.id}" ${arrastavel ? 'draggable="true"' : ''} style="--cor-cliente:${corDaTarefa(ctx, t)}">
     <div class="titulo">${esc(t.titulo)}</div>
@@ -35,7 +44,7 @@ export function cartaoTarefa(ctx, t, arrastavel = false) {
       ${t.prioridade === 'urgente' ? '<span class="etiqueta urgente">Urgente</span>' : ''}
       <span class="espaco"></span>
       <span class="fraco ${estaAtrasada(t) ? 'atrasada' : ''}">${quando(t)}</span>
-      ${responsavel ? `<span class="avatar" title="${esc(responsavel)}">${esc(iniciais(responsavel))}</span>` : ''}
+      ${avatares(ctx, t)}
     </div>
   </div>`;
 }
@@ -101,7 +110,7 @@ export function aplicarFiltros(ctx, tarefas) {
   const busca = filtros.busca.trim().toLowerCase();
   return tarefas.filter((t) =>
     (!filtros.setor || t.setor === filtros.setor)
-    && (!filtros.responsavel || t.responsavel_id === (filtros.responsavel === 'eu' ? eu : filtros.responsavel))
+    && (!filtros.responsavel || ehResponsavel(t, filtros.responsavel === 'eu' ? eu : filtros.responsavel))
     && (!filtros.cliente || (ctx.projeto(t.projeto_id)?.cliente_id ?? 'interno') === filtros.cliente)
     && (!filtros.projeto || t.projeto_id === filtros.projeto)
     && (!busca || t.titulo.toLowerCase().includes(busca) || nomeClienteDaTarefa(ctx, t).toLowerCase().includes(busca)));

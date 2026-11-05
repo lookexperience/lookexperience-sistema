@@ -117,6 +117,18 @@ create table if not exists public.tarefas (
   atualizado_em  timestamptz not null default now()
 );
 
+-- Vários responsáveis por tarefa (desde a versão 0.5.0). "responsavel_id"
+-- continua existindo e é sempre o primeiro da lista, para as telas antigas.
+alter table public.tarefas add column if not exists responsaveis uuid[] not null default '{}';
+do $$ begin
+  if exists (select 1 from public.tarefas where responsavel_id is not null and responsaveis = '{}') then
+    alter table public.tarefas disable trigger user;  -- copia sem gerar avisos nem mudar datas
+    update public.tarefas set responsaveis = array[responsavel_id] where responsavel_id is not null and responsaveis = '{}';
+    alter table public.tarefas enable trigger user;
+  end if;
+end $$;
+create index if not exists tarefas_responsaveis_idx on public.tarefas using gin (responsaveis);
+
 create table if not exists public.comentarios (
   id        uuid primary key default gen_random_uuid(),
   tarefa_id uuid not null references public.tarefas(id) on delete cascade,
@@ -155,6 +167,7 @@ select pg_temp.limite('perfis', 'perfis_tamanhos', 'char_length(nome) <= 120 and
 select pg_temp.limite('clientes', 'clientes_tamanhos', 'char_length(btrim(nome)) between 1 and 200 and char_length(contato) <= 200 and char_length(email) <= 320 and char_length(telefone) <= 60 and char_length(instagram) <= 120 and char_length(observacoes) <= 20000');
 select pg_temp.limite('clientes', 'clientes_cor', $c$cor = '' or cor ~ '^#[0-9A-Fa-f]{6}$'$c$);
 select pg_temp.limite('projetos', 'projetos_tamanhos', 'char_length(btrim(nome)) between 1 and 200 and char_length(tipo) <= 120 and char_length(descricao) <= 20000');
+select pg_temp.limite('tarefas', 'tarefas_responsaveis', 'cardinality(responsaveis) <= 10');
 select pg_temp.limite('tarefas', 'tarefas_tamanhos', 'char_length(btrim(titulo)) between 1 and 300 and char_length(descricao) <= 20000 and char_length(local) <= 300');
 select pg_temp.limite('comentarios', 'comentarios_tamanhos', 'char_length(btrim(texto)) between 1 and 5000');
 select pg_temp.limite('avisos', 'avisos_tamanhos', 'char_length(texto) <= 1000');
@@ -248,11 +261,23 @@ language sql stable security definer set search_path = public as $$
   );
 $$;
 
+-- Mesma regra, com a lista de responsáveis (usada pelas políticas).
+create or replace function public.pode_ver_tarefa(p_setor text, p_responsaveis uuid[], p_criado_por uuid) returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.pode('tarefas', 'ver') and (
+    public.escopo_tarefas() = 'todas'
+    or auth.uid() = any(coalesce(p_responsaveis, '{}'))
+    or p_criado_por = auth.uid()
+    or (public.escopo_tarefas() = 'setor'
+        and p_setor = any(coalesce((select setores from perfis where id = auth.uid()), '{}')))
+  );
+$$;
+
 -- Projeto visível porque o usuário enxerga alguma tarefa dele.
 create or replace function public.ve_tarefa_do_projeto(p_projeto uuid) returns boolean
 language sql stable security definer set search_path = public as $$
   select exists (select 1 from tarefas t where t.projeto_id = p_projeto
-                 and public.pode_ver_tarefa(t.setor, t.responsavel_id, t.criado_por));
+                 and public.pode_ver_tarefa(t.setor, t.responsaveis, t.criado_por));
 $$;
 
 create or replace function public.ve_tarefa_do_cliente(p_cliente uuid) returns boolean
@@ -271,7 +296,7 @@ language sql stable security definer set search_path = public as $$
       and (u.admin or exists (
         select 1 from permissoes pm
         where pm.usuario_id = u.id and pm.modulo = 'tarefas' and pm.ver
-          and (pm.escopo = 'todas' or t.responsavel_id = u.id or t.criado_por = u.id
+          and (pm.escopo = 'todas' or u.id = any(t.responsaveis) or t.criado_por = u.id
                or (pm.escopo = 'setor' and t.setor = any(u.setores))))));
 $$;
 
@@ -407,6 +432,49 @@ drop trigger if exists proteger_tarefa on public.tarefas;
 create trigger proteger_tarefa before insert or update on public.tarefas
   for each row execute function public.proteger_tarefa();
 
+-- Lista de responsáveis: sem repetidos nem vazios, até 10 pessoas, todas
+-- com perfil. Quem manda só "responsavel_id" (tela antiga) troca a lista
+-- inteira por essa pessoa. "responsavel_id" vira sempre o primeiro da lista.
+create or replace function public.arrumar_responsaveis() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    if cardinality(new.responsaveis) = 0 and new.responsavel_id is not null then
+      new.responsaveis := array[new.responsavel_id];
+    end if;
+  elsif new.responsaveis is not distinct from old.responsaveis
+        and new.responsavel_id is distinct from old.responsavel_id then
+    new.responsaveis := case when new.responsavel_id is null then '{}'::uuid[] else array[new.responsavel_id] end;
+  end if;
+  new.responsaveis := coalesce((select array_agg(r order by primeira)
+    from (select r, min(ordem) as primeira from unnest(new.responsaveis) with ordinality as x(r, ordem)
+          where r is not null group by r) d), '{}');
+  if cardinality(new.responsaveis) > 10 then
+    raise exception 'Uma tarefa pode ter no máximo 10 responsáveis.';
+  end if;
+  if exists (select 1 from unnest(new.responsaveis) r where not exists (select 1 from perfis p where p.id = r)) then
+    raise exception 'Responsável não encontrado na equipe.';
+  end if;
+  new.responsavel_id := new.responsaveis[1];
+  return new;
+end $$;
+
+drop trigger if exists arrumar_responsaveis on public.tarefas;
+create trigger arrumar_responsaveis before insert or update on public.tarefas
+  for each row execute function public.arrumar_responsaveis();
+
+-- Pessoa removida da equipe sai da lista de responsáveis das tarefas.
+create or replace function public.tirar_responsavel_removido() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  update tarefas set responsaveis = array_remove(responsaveis, old.id) where old.id = any(responsaveis);
+  return old;
+end $$;
+
+drop trigger if exists tirar_responsavel_removido on public.perfis;
+create trigger tirar_responsavel_removido before delete on public.perfis
+  for each row execute function public.tirar_responsavel_removido();
+
 -- Clientes e projetos também ficam no nome de quem criou.
 create or replace function public.fixar_autor() returns trigger
 language plpgsql security definer set search_path = public as $$
@@ -446,21 +514,20 @@ drop trigger if exists marcar_atualizacao on public.tarefas;
 create trigger marcar_atualizacao before update on public.tarefas
   for each row execute function public.marcar_atualizacao();
 
--- Aviso para quem recebe uma tarefa.
+-- Aviso para cada pessoa que entra na lista de responsáveis.
 create or replace function public.avisar_responsavel() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
-  if new.responsavel_id is not null
-     and new.responsavel_id is distinct from auth.uid()
-     and (tg_op = 'INSERT' or new.responsavel_id is distinct from old.responsavel_id) then
-    insert into avisos (usuario_id, texto, tarefa_id)
-    values (new.responsavel_id, left('Nova tarefa para você: ' || new.titulo, 1000), new.id);
-  end if;
+  insert into avisos (usuario_id, texto, tarefa_id)
+  select r, left('Nova tarefa para você: ' || new.titulo, 1000), new.id
+  from unnest(new.responsaveis) r
+  where r is distinct from auth.uid()
+    and (tg_op = 'INSERT' or not (r = any(old.responsaveis)));
   return new;
 end $$;
 
 drop trigger if exists avisar_responsavel on public.tarefas;
-create trigger avisar_responsavel after insert or update of responsavel_id on public.tarefas
+create trigger avisar_responsavel after insert or update of responsaveis, responsavel_id on public.tarefas
   for each row execute function public.avisar_responsavel();
 
 -- Aviso de comentário: para o responsável da tarefa e para quem foi
@@ -484,7 +551,7 @@ begin
   cross join lateral (select split_part(p.nome, ' ', 1) <> ''
     and strpos(lower(new.texto), lower('@' || split_part(p.nome, ' ', 1))) > 0 as marcado) m
   where p.ativo and p.id <> new.autor_id
-    and (p.id = v_tarefa.responsavel_id or m.marcado)
+    and (p.id = any(v_tarefa.responsaveis) or m.marcado)
     and public.usuario_ve_tarefa(p.id, new.tarefa_id);
   return new;
 end $$;
@@ -555,20 +622,20 @@ create policy projetos_apagar on public.projetos for delete to authenticated
 
 -- Tarefas: o responsável sempre pode mover a própria tarefa.
 create policy tarefas_ler on public.tarefas for select to authenticated
-  using (public.pode_ver_tarefa(setor, responsavel_id, criado_por));
+  using (public.pode_ver_tarefa(setor, responsaveis, criado_por));
 -- Tarefa só entra num projeto que a pessoa já enxerga (senão, ligando uma
 -- tarefa a um projeto alheio, ela passaria a ver o projeto e o cliente).
 create policy tarefas_criar on public.tarefas for insert to authenticated
   with check (public.pode('tarefas', 'criar')
               and (projeto_id is null or exists (select 1 from public.projetos p where p.id = projeto_id)));
 create policy tarefas_editar on public.tarefas for update to authenticated
-  using (public.pode_ver_tarefa(setor, responsavel_id, criado_por)
-         and (public.pode('tarefas', 'editar') or responsavel_id = auth.uid()))
-  with check (public.pode_ver_tarefa(setor, responsavel_id, criado_por)
-              and (public.pode('tarefas', 'editar') or responsavel_id = auth.uid())
+  using (public.pode_ver_tarefa(setor, responsaveis, criado_por)
+         and (public.pode('tarefas', 'editar') or auth.uid() = any(responsaveis)))
+  with check (public.pode_ver_tarefa(setor, responsaveis, criado_por)
+              and (public.pode('tarefas', 'editar') or auth.uid() = any(responsaveis))
               and (projeto_id is null or exists (select 1 from public.projetos p where p.id = projeto_id)));
 create policy tarefas_apagar on public.tarefas for delete to authenticated
-  using (public.pode('tarefas', 'apagar') and public.pode_ver_tarefa(setor, responsavel_id, criado_por));
+  using (public.pode('tarefas', 'apagar') and public.pode_ver_tarefa(setor, responsaveis, criado_por));
 
 -- Comentários: quem vê a tarefa lê e comenta.
 create policy comentarios_ler on public.comentarios for select to authenticated

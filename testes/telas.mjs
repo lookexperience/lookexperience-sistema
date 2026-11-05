@@ -63,13 +63,17 @@ const cartoes = (status) => p.locator(`.coluna[data-status=${status}] .cartao .t
 const fecharModal = async () => { await p.keyboard.press('Escape'); await p.waitForTimeout(80); };
 const clicarApagar = async (seletor) => { await p.click(seletor); await p.click(seletor); await p.waitForTimeout(250); };
 const textoToast = async () => (await p.locator('.aviso-flutuante').last().textContent().catch(() => '')) ?? '';
+const marcarResponsaveis = async (ids) => {
+  for (const caixa of await p.locator('[name=responsaveis]').all()) await caixa.setChecked(ids.includes(await caixa.getAttribute('value')));
+};
 async function novaTarefa(campos) {
   await p.click('#nova');
   await p.waitForSelector('#form-tarefa');
   await p.fill('[name=titulo]', campos.titulo);
   if (campos.cliente) await p.selectOption('[name=cliente_id]', { label: campos.cliente });
   if (campos.projeto) await p.selectOption('[name=projeto_id]', { label: campos.projeto });
-  for (const k of ['setor', 'tipo', 'status', 'prioridade', 'responsavel_id']) if (campos[k]) await p.selectOption(`[name=${k}]`, campos[k]);
+  for (const k of ['setor', 'tipo', 'status', 'prioridade']) if (campos[k]) await p.selectOption(`[name=${k}]`, campos[k]);
+  if (campos.responsaveis) await marcarResponsaveis(campos.responsaveis);
   if (campos.prazo) await p.fill('[name=prazo]', campos.prazo);
   await p.click('#salvar-tarefa');
   await p.waitForTimeout(250);
@@ -167,7 +171,7 @@ await teste('Admin: cliente sem projeto mostra o aviso na tarefa', async () => {
 
 await teste('Admin: cria tarefa escolhendo cliente e projeto', async () => {
   await ir('atividades');
-  await novaTarefa({ titulo: 'Fotos do cardápio', cliente: 'Padaria Teste', projeto: 'Cardápio novo', setor: 'execucao', responsavel_id: 'u-marina', prazo: hojeMais(0) });
+  await novaTarefa({ titulo: 'Fotos do cardápio', cliente: 'Padaria Teste', projeto: 'Cardápio novo', setor: 'execucao', responsaveis: ['u-marina'], prazo: hojeMais(0) });
   confere((await cartoes('a_fazer')).includes('Fotos do cardápio'), 'tarefa não está em A fazer');
 });
 
@@ -193,6 +197,34 @@ await teste('Admin: comenta com @Marina e ela recebe aviso', async () => {
   confere(await p.locator('.comentario', { hasText: 'Capricha na luz' }).count(), 'comentário não apareceu');
   confere(await p.locator('.comentario .mencao', { hasText: '@Marina' }).count(), 'menção não destacada');
   await fecharModal();
+});
+
+await teste('Tarefa nova já vem com quem está criando marcado como responsável', async () => {
+  await ir('atividades');
+  await p.click('#nova'); await p.waitForSelector('#form-tarefa');
+  igual(await p.locator('[name=responsaveis]:checked').evaluateAll((cs) => cs.map((c) => c.value)), ['u-pablo'], 'marcados');
+  await fecharModal();
+});
+
+await teste('Admin: coloca duas pessoas na mesma tarefa e o cartão mostra as duas', async () => {
+  await p.click('.cartao:has-text("Fotos do cardápio (pães)")');
+  await marcarResponsaveis(['u-marina', 'u-rafa']);
+  await p.click('#salvar-tarefa'); await p.waitForTimeout(200);
+  const cartao = p.locator('.cartao', { hasText: 'Fotos do cardápio (pães)' });
+  igual(await cartao.locator('.avatar').count(), 2, 'quantidade de avatares');
+  const dica = await cartao.locator('.avatares').getAttribute('title');
+  confere(dica.includes('Marina') && dica.includes('Rafa'), `nomes no cartão: ${dica}`);
+  await p.click('.cartao:has-text("Fotos do cardápio (pães)")');
+  igual(await p.locator('[name=responsaveis]:checked').evaluateAll((cs) => cs.map((c) => c.value)), ['u-marina', 'u-rafa'], 'marcados ao abrir de novo');
+  await fecharModal();
+});
+
+await teste('Admin: filtro de pessoa acha a tarefa por qualquer um dos responsáveis', async () => {
+  await p.selectOption('#f-responsavel', 'u-rafa'); await p.waitForTimeout(150);
+  confere((await p.locator('.cartao .titulo').allTextContents()).includes('Fotos do cardápio (pães)'), 'filtro do Rafa não achou');
+  await p.selectOption('#f-responsavel', 'u-marina'); await p.waitForTimeout(150);
+  confere((await p.locator('.cartao .titulo').allTextContents()).includes('Fotos do cardápio (pães)'), 'filtro da Marina não achou');
+  await p.selectOption('#f-responsavel', ''); await p.waitForTimeout(150);
 });
 
 await teste('Admin: comentário vazio não é enviado', async () => {
@@ -533,8 +565,24 @@ await teste('Freelancer: menu só com Visão geral, Atividades, Calendário e Ap
 await teste('Freelancer: vê só as tarefas dele', async () => {
   await ir('atividades');
   const titulos = (await p.locator('.cartao .titulo').allTextContents()).sort();
-  igual(titulos, ['Editar 3 reels de lançamento', 'Gravação de produtos na loja'], 'tarefas');
+  igual(titulos, ['Editar 3 reels de lançamento', 'Fotos do cardápio (pães)', 'Gravação de produtos na loja'], 'tarefas');
   confere(!(await p.locator('#nova').count()), 'botão Nova tarefa apareceu');
+});
+
+await teste('Freelancer: recebeu aviso da tarefa em que entrou junto com outra pessoa', async () => {
+  await p.click('#abrir-avisos');
+  confere(await p.locator('.caixa-avisos .aviso', { hasText: 'Nova tarefa para você: Fotos do cardápio' }).count(), 'sem aviso da tarefa dividida');
+  await p.click('h1');
+});
+
+await teste('Freelancer: na tarefa dividida não troca os responsáveis, só o status', async () => {
+  await p.click('.cartao:has-text("Fotos do cardápio (pães)")');
+  confere(await p.locator('[name=responsaveis]').first().isDisabled(), 'responsáveis editáveis');
+  confere(!(await p.locator('[name=status]').isDisabled()), 'status bloqueado');
+  await p.selectOption('[name=status]', 'fazendo');
+  await p.click('#salvar-tarefa'); await p.waitForTimeout(200);
+  confere((await cartoes('fazendo')).includes('Fotos do cardápio (pães)'), 'status não mudou');
+  igual(await p.locator('.cartao', { hasText: 'Fotos do cardápio (pães)' }).locator('.avatar').count(), 2, 'responsáveis depois de salvar');
 });
 
 await teste('Freelancer: na tarefa só o status pode mudar', async () => {

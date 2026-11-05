@@ -3,7 +3,7 @@ import { pode } from '../permissoes.js';
 import { esc, $, dataCurta, avisar, iniciais, estaAtrasada } from '../util.js';
 import { abrirModal, opcoes } from './modal.js';
 import { ACEITOS, ehImagem, tamanhoLegivel, rotuloTipo } from '../anexos.js';
-import { filtros, paletaCores, corCliente, quando, ligarTarefas } from './comum.js';
+import { filtros, paletaCores, corCliente, quando, ligarTarefas, avatares } from './comum.js';
 
 // O que cada pessoa deixou recolhido fica guardado neste computador.
 const chaveRecolhidos = (ctx) => `look-recolhidos-${ctx.estado.sessao.perfil.id}`;
@@ -38,12 +38,11 @@ export async function render(el, ctx) {
   const listaTarefas = (tarefas, p) => {
     const ordenadas = [...tarefas].sort((a, b) => ordemStatus[a.status] - ordemStatus[b.status] || (a.prazo ?? a.inicio ?? '9').localeCompare(b.prazo ?? b.inicio ?? '9'));
     const itens = ordenadas.map((t) => {
-      const resp = ctx.nomePerfil(t.responsavel_id);
       return `<div class="tarefa-linha ${t.status === 'feito' ? 'feita' : ''}" data-tarefa="${t.id}">
         <span class="etiqueta status-${t.status}">${nomeDe(STATUS, t.status)}</span>
         <span class="titulo">${esc(t.titulo)}${t.prioridade === 'urgente' ? ' <span class="etiqueta urgente">Urgente</span>' : ''}</span>
         <span class="fraco ${estaAtrasada(t) ? 'atrasada' : ''}">${quando(t)}</span>
-        ${resp ? `<span class="avatar" title="${esc(resp)}">${esc(iniciais(resp))}</span>` : '<span class="avatar" title="Sem responsável">–</span>'}
+        ${avatares(ctx, t, '<span class="avatar" title="Sem responsável">–</span>')}
       </div>`;
     }).join('');
     const nova = pode(s, 'tarefas', 'criar') ? `<button class="botao pequeno sutil" data-nova-tarefa="${p.id}">+ Tarefa neste projeto</button>` : '';

@@ -1,5 +1,5 @@
 import { SETORES, STATUS, TIPOS } from '../config.js';
-import { pode, podeEditarTarefa } from '../permissoes.js';
+import { pode, podeEditarTarefa, responsaveisDe, ehResponsavel } from '../permissoes.js';
 import { esc, $, iniciais, dataHora, paraCampoDataHora, comMencoes, avisar } from '../util.js';
 import { abrirModal, opcoes } from './modal.js';
 
@@ -9,14 +9,16 @@ export async function abrirTarefa(ctx, tarefa, padrao = {}) {
   const db = ctx.db();
   const s = estado.sessao;
   const nova = !tarefa;
-  const t = tarefa ?? { titulo: '', descricao: '', tipo: 'tarefa', setor: s.perfil.setores[0] ?? 'criacao', status: 'a_fazer', prioridade: 'normal', responsavel_id: s.perfil.id, projeto_id: '', prazo: '', inicio: '', local: '', ...padrao };
+  const t = tarefa ?? { titulo: '', descricao: '', tipo: 'tarefa', setor: s.perfil.setores[0] ?? 'criacao', status: 'a_fazer', prioridade: 'normal', responsaveis: [s.perfil.id], projeto_id: '', prazo: '', inicio: '', local: '', ...padrao };
   const podeEditar = nova ? pode(s, 'tarefas', 'criar') : podeEditarTarefa(s, t);
-  const soStatus = !nova && !pode(s, 'tarefas', 'editar') && t.responsavel_id === s.perfil.id;
+  const soStatus = !nova && !pode(s, 'tarefas', 'editar') && ehResponsavel(t, s.perfil.id);
   const bloqueado = (campo) => (!podeEditar || (soStatus && campo !== 'status') ? 'disabled' : '');
 
-  // Pessoas ativas, mais o responsável atual mesmo que desativado (para não sumir ao salvar).
-  const pessoas = estado.perfis.filter((p) => p.ativo || p.id === t.responsavel_id)
+  // Pessoas ativas, mais os responsáveis atuais mesmo que desativados (para não sumirem ao salvar).
+  const atuais = responsaveisDe(t);
+  const pessoas = estado.perfis.filter((p) => p.ativo || atuais.includes(p.id))
     .map((p) => ({ chave: p.id, nome: p.ativo ? p.nome : `${p.nome} (desativado)` }));
+  const escolhaPessoas = pessoas.map((p) => `<label class="pessoa"><input type="checkbox" name="responsaveis" value="${esc(p.chave)}" ${atuais.includes(p.chave) ? 'checked' : ''} ${bloqueado('responsaveis')}><span>${esc(p.nome)}</span></label>`).join('');
   // Projetos pertencem a um cliente: escolhe o cliente e depois um dos projetos dele.
   const clientes = [...estado.clientes].sort((a, b) => a.nome.localeCompare(b.nome)).map((c) => ({ chave: c.id, nome: c.nome }));
   const clienteAtual = t.cliente_id ?? ctx.projeto(t.projeto_id)?.cliente_id ?? '';
@@ -28,7 +30,7 @@ export async function abrirTarefa(ctx, tarefa, padrao = {}) {
       <div class="campo inteiro"><label>Título</label><input type="text" name="titulo" maxlength="300" required value="${esc(t.titulo)}" ${bloqueado('titulo')}></div>
       <div class="campo"><label>Cliente</label><select name="cliente_id" ${bloqueado('projeto_id')}>${opcoes(clientes, clienteAtual, 'Interno (sem cliente)')}</select></div>
       <div class="campo"><label>Projeto</label><select name="projeto_id" ${bloqueado('projeto_id')}></select><span class="fraco" id="aviso-projeto"></span></div>
-      <div class="campo"><label>Responsável</label><select name="responsavel_id" ${bloqueado('responsavel_id')}>${opcoes(pessoas, t.responsavel_id, 'Ninguém ainda')}</select></div>
+      <div class="campo inteiro"><label>Responsáveis <span class="fraco">(pode marcar mais de uma pessoa)</span></label><div class="escolha-pessoas" id="responsaveis">${escolhaPessoas || '<span class="fraco">Ninguém na equipe ainda.</span>'}</div></div>
       <div class="campo"><label>Setor</label><select name="setor" ${bloqueado('setor')}>${opcoes(SETORES, t.setor)}</select></div>
       <div class="campo"><label>Tipo</label><select name="tipo" ${bloqueado('tipo')}>${opcoes(TIPOS, t.tipo)}</select></div>
       <div class="campo"><label>Status</label><select name="status" ${bloqueado('status')}>${opcoes(STATUS, t.status)}</select></div>
@@ -61,14 +63,24 @@ export async function abrirTarefa(ctx, tarefa, padrao = {}) {
     $('#aviso-projeto', el).textContent = !interno && !lista.length ? 'Este cliente ainda não tem projeto. Crie um na ficha do cliente.' : '';
   };
   seletorCliente.addEventListener('change', atualizarProjetos);
+  // Até 10 responsáveis (o banco confere de novo).
+  $('#responsaveis', el).addEventListener('change', (e) => {
+    if (e.target.checked && $('#responsaveis', el).querySelectorAll('input:checked').length > 10) {
+      e.target.checked = false;
+      avisar('Uma tarefa pode ter no máximo 10 responsáveis.');
+    }
+  });
   atualizarProjetos();
 
   $('#salvar-tarefa', el)?.addEventListener('click', async () => {
     const form = $('#form-tarefa', el);
     if (!form.reportValidity()) return;
     const f = Object.fromEntries(new FormData(form));
+    // Quem já era responsável continua na frente (o primeiro é o principal).
+    const marcados = new FormData(form).getAll('responsaveis');
+    const responsaveis = [...atuais.filter((id) => marcados.includes(id)), ...marcados.filter((id) => !atuais.includes(id))];
     const dados = soStatus ? { status: f.status } : {
-      titulo: f.titulo.trim(), projeto_id: f.projeto_id || null, responsavel_id: f.responsavel_id || null,
+      titulo: f.titulo.trim(), projeto_id: f.projeto_id || null, responsaveis, responsavel_id: responsaveis[0] ?? null,
       setor: f.setor, tipo: f.tipo, status: f.status, prioridade: f.prioridade,
       prazo: f.prazo || null, inicio: f.inicio ? new Date(f.inicio).toISOString() : null,
       local: f.local.trim(), descricao: f.descricao,

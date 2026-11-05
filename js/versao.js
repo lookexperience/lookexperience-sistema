@@ -2,6 +2,19 @@
 // entrada no topo desta lista; a tela "Sobre o sistema" mostra tudo.
 export const HISTORICO = [
   {
+    versao: '0.5.0',
+    data: '2026-11-05',
+    titulo: 'Vários responsáveis por tarefa',
+    itens: [
+      'Na janela da tarefa, "Responsáveis" virou uma lista de pessoas para marcar: dá para colocar até 10 na mesma tarefa',
+      'Cartões e listas mostram as iniciais de todos os responsáveis (passando de 3, aparece "+N")',
+      'Todos os responsáveis veem a tarefa, podem mudar o status e recebem o aviso de comentários',
+      'Quem entra na tarefa recebe o aviso "Nova tarefa para você" (só quem é novo, sem repetir para quem já estava)',
+      'O filtro de pessoa e o "Só as minhas" acham a tarefa por qualquer um dos responsáveis',
+      'Tarefas antigas continuam com o responsável que já tinham',
+    ],
+  },
+  {
     versao: '0.4.0',
     data: '2026-11-05',
     titulo: 'Anexos nos projetos',

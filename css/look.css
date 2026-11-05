@@ -296,3 +296,13 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .anexo .nome { color: var(--texto); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .anexo .nome:hover { text-decoration: underline; }
 @media (max-width: 600px) { .anexo { flex-wrap: wrap; } .anexo .info { flex-basis: calc(100% - 70px); } }
+
+/* Vários responsáveis */
+.avatares { display: inline-flex; flex: none; }
+.avatares .avatar + .avatar { margin-left: -7px; box-shadow: 0 0 0 2px var(--painel); }
+.avatar.mais { font-size: 10px; }
+.escolha-pessoas { display: flex; flex-wrap: wrap; gap: 6px; }
+.escolha-pessoas .pessoa { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border: 1px solid var(--linha-forte); border-radius: 999px; cursor: pointer; font-size: 13px; margin: 0; }
+.escolha-pessoas .pessoa:has(input:checked) { background: var(--painel-3); border-color: var(--texto, currentColor); }
+.escolha-pessoas .pessoa:has(input:disabled) { cursor: default; opacity: .75; }
+.escolha-pessoas input { margin: 0; }
