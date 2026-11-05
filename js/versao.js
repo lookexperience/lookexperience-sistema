@@ -2,6 +2,19 @@
 // entrada no topo desta lista; a tela "Sobre o sistema" mostra tudo.
 export const HISTORICO = [
   {
+    versao: '0.4.0',
+    data: '2026-11-05',
+    titulo: 'Anexos nos projetos',
+    itens: [
+      'Cada projeto ganhou a área Anexos: imagens, PDF, Word, PowerPoint e Excel, até 20 MB cada (clicando em "+ Anexar" ou arrastando os arquivos)',
+      'Imagens aparecem em miniatura; qualquer anexo abre no navegador ou baixa com o nome original',
+      'Quem vê o projeto vê os anexos; quem edita projetos anexa; apaga quem pode apagar projetos ou quem enviou',
+      'Arquivos ficam num depósito privado do Supabase e só abrem por link temporário (1 hora)',
+      'Tipos perigosos (página, SVG, programa) são recusados na tela, no banco e no depósito',
+      'Apagar um projeto apaga também os arquivos dele',
+    ],
+  },
+  {
     versao: '0.3.0',
     data: '2026-11-04',
     titulo: 'Apresentações a partir do Word',

@@ -38,6 +38,12 @@ A chave pública pode ficar no código. Quem protege os dados são as regras do 
 - O responsável por uma tarefa sempre pode mudar o status dela.
 - Para tirar alguém, desmarque "Conta ativa".
 
+## Anexos dos projetos
+
+- Na janela de cada projeto: imagens, PDF, Word, PowerPoint e Excel, até 20 MB cada.
+- Os arquivos ficam no depósito privado `anexos` do Supabase Storage (criado pelo `schema.sql`). O plano grátis guarda 1 GB no total; vídeos e arquivos pesados ficam como link do Google Drive na descrição do projeto.
+- Quem vê o projeto vê os anexos; quem pode editar projetos anexa; apaga quem pode apagar projetos ou quem enviou o arquivo.
+
 ## Como fazer atualizações
 
 Toda mudança é feita no código, e só vai pro ar com os testes de `testes/` passando:

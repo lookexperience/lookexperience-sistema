@@ -313,6 +313,77 @@ await teste('Admin: apaga tarefa (pede confirmação com segundo clique)', async
   confere(!(await p.locator('.cartao', { hasText: '<img src=x' }).count()), 'tarefa não foi apagada');
 });
 
+// Imagem PNG mínima (1x1) para os testes de anexo.
+const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+const abrirProjetoLotus = async () => {
+  await ir('projetos');
+  await p.locator('tr[data-id=p-lotus]').click();
+  await p.waitForSelector('#lista-anexos');
+  await p.waitForTimeout(150);
+};
+
+await teste('Admin: anexa imagem e PDF ao projeto e eles aparecem na lista', async () => {
+  await abrirProjetoLotus();
+  confere((await p.locator('#lista-anexos').textContent()).includes('Nenhum anexo'), 'lista não começou vazia');
+  await p.setInputFiles('#arquivos', [
+    { name: 'Moodboard.png', mimeType: 'image/png', buffer: PNG },
+    { name: 'Proposta Lotus.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 teste') },
+  ]);
+  await p.waitForSelector('.anexo >> nth=1');
+  igual(await p.locator('.anexo .nome').allTextContents(), ['Moodboard.png', 'Proposta Lotus.pdf'], 'anexos');
+  confere(await p.locator('.anexo').first().locator('.capa img').count(), 'imagem sem miniatura');
+  igual(await p.locator('.anexo').nth(1).locator('.tipo-arquivo').textContent(), 'PDF', 'ícone do PDF');
+  const baixar = await p.locator('.anexo').nth(1).locator('a[download]').getAttribute('download');
+  igual(baixar, 'Proposta Lotus.pdf', 'nome do arquivo baixado');
+  await fecharModal();
+});
+
+await teste('Admin: anexos continuam lá ao abrir o projeto de novo', async () => {
+  await abrirProjetoLotus();
+  igual(await p.locator('.anexo').count(), 2, 'anexos guardados');
+  await fecharModal();
+});
+
+await teste('Ataque: arquivo de tipo proibido (página HTML, SVG, programa) não é anexado', async () => {
+  await abrirProjetoLotus();
+  await p.setInputFiles('#arquivos', [
+    { name: 'pagina.html', mimeType: 'text/html', buffer: Buffer.from('<script>alert(1)</script>') },
+    { name: 'logo.svg', mimeType: 'image/svg+xml', buffer: Buffer.from('<svg onload="alert(1)"/>') },
+    { name: 'programa.exe', mimeType: 'application/octet-stream', buffer: Buffer.from('MZ') },
+  ]);
+  await p.waitForTimeout(300);
+  igual(await p.locator('.anexo').count(), 2, 'anexos depois da tentativa');
+  confere((await textoToast()).includes('não foi anexado'), 'sem aviso de tipo proibido');
+  await fecharModal();
+});
+
+await teste('Ataque: nome de arquivo com código não é executado', async () => {
+  await abrirProjetoLotus();
+  await p.setInputFiles('#arquivos', [{ name: '<img src=x onerror="window.__xssAnexo=1">.png', mimeType: 'image/png', buffer: PNG }]);
+  await p.waitForSelector('.anexo >> nth=2');
+  confere(!(await p.evaluate(() => window.__xssAnexo)), 'código do nome do arquivo rodou');
+  confere((await p.locator('.anexo .nome').nth(2).textContent()).startsWith('<img'), 'nome não aparece como texto');
+  await fecharModal();
+});
+
+await teste('Admin: apaga anexo (pede confirmação com segundo clique)', async () => {
+  await abrirProjetoLotus();
+  const botao = p.locator('.anexo').nth(2).locator('[data-apagar-anexo]');
+  await botao.click(); await p.waitForTimeout(100);
+  igual(await p.locator('.anexo').count(), 3, 'apagou no primeiro clique');
+  await botao.click(); await p.waitForTimeout(250);
+  igual(await p.locator('.anexo').count(), 2, 'anexos depois de apagar');
+  await fecharModal();
+});
+
+await teste('Projeto novo avisa que os anexos entram depois de salvar', async () => {
+  await ir('projetos');
+  await p.click('#novo');
+  confere(!(await p.locator('#arquivos').count()), 'projeto novo já mostra anexar');
+  confere((await p.locator('.modal').textContent()).includes('Depois de salvar o projeto'), 'sem o aviso');
+  await fecharModal();
+});
+
 await teste('Admin: apagar projeto mantém as tarefas, sem projeto', async () => {
   await ir('projetos');
   await p.click('tr[data-id]:has-text("Cardápio novo")');
@@ -429,6 +500,15 @@ await teste('Gerente: clientes só para consulta (sem criar nem salvar)', async 
   await p.click('tr[data-id] >> nth=0');
   confere(!(await p.locator('#salvar').count()), 'botão salvar apareceu');
   confere(await p.locator('[name=nome]').isDisabled(), 'campo nome editável');
+  await fecharModal();
+});
+
+await teste('Gerente: anexa ao projeto e só apaga o anexo que ela mesma enviou', async () => {
+  await abrirProjetoLotus();
+  igual(await p.locator('.anexo [data-apagar-anexo]').count(), 0, 'botões de apagar em anexos do admin');
+  await p.setInputFiles('#arquivos', [{ name: 'Referencia.jpg', mimeType: 'image/jpeg', buffer: PNG }]);
+  await p.waitForSelector('.anexo >> nth=2');
+  igual(await p.locator('.anexo [data-apagar-anexo]').count(), 1, 'botões de apagar depois de anexar');
   await fecharModal();
 });
 

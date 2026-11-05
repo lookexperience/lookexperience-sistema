@@ -3,6 +3,7 @@
 import { MODULOS } from './config.js';
 import { pode, podeVerTarefa, podeEditarTarefa, temAlgumAcesso } from './permissoes.js';
 import { chaveDia } from './util.js';
+import { conferirArquivo, novoIdAnexo } from './anexos.js';
 
 export const modo = 'demo';
 const CHAVE = 'look-sistema-demo-v4';
@@ -92,7 +93,7 @@ function semente() {
   const avisos = [
     { id: novoId(), usuario_id: pablo, texto: 'Marina Exemplo marcou você em: Fechar cor do nome e acabamento da medalha', tarefa_id: tarefas[2].id, lido: false, criado_em: agora },
   ];
-  return { perfis, permissoes, clientes, projetos, tarefas, comentarios, avisos };
+  return { perfis, permissoes, clientes, projetos, tarefas, comentarios, avisos, anexos: [] };
 }
 
 export async function iniciar() {
@@ -139,6 +140,7 @@ function visivel(tabela, linha, s) {
     case 'clientes': return pode(s, 'clientes', 'ver') || banco.projetos.some((p) => p.cliente_id === linha.id && banco.tarefas.some((t) => t.projeto_id === p.id && tarefaVisivel(t)));
     case 'comentarios': return banco.tarefas.some((t) => t.id === linha.tarefa_id && tarefaVisivel(t));
     case 'avisos': return linha.usuario_id === eu;
+    case 'anexos': return banco.projetos.some((p) => p.id === linha.projeto_id && visivel('projetos', p, s));
     default: return false;
   }
 }
@@ -233,6 +235,7 @@ export async function apagar(tabela, id) {
   // Igual ao banco: projeto sem cliente e tarefa sem projeto continuam existindo.
   if (tabela === 'clientes') banco.projetos.forEach((p) => { if (p.cliente_id === id) p.cliente_id = null; });
   if (tabela === 'projetos') banco.tarefas.forEach((t) => { if (t.projeto_id === id) t.projeto_id = null; });
+  if (tabela === 'projetos') banco.anexos = (banco.anexos ?? []).filter((a) => a.projeto_id !== id);
   salvar();
 }
 
@@ -247,5 +250,57 @@ export async function salvarPermissoes(usuarioId, linhas) {
   if (!s.perfil.admin) negar();
   banco.permissoes = banco.permissoes.filter((p) => p.usuario_id !== usuarioId)
     .concat(linhas.filter((l) => MODULOS.some((m) => m.chave === l.modulo)).map((l) => ({ ...l, usuario_id: usuarioId })));
+  salvar();
+}
+
+// ---------- Anexos (na demonstração, o arquivo fica dentro deste navegador) ----------
+const LIMITE_DEMO = 2 * 1024 * 1024;
+
+export async function listarAnexos(projetoId) {
+  const s = await sessao();
+  banco.anexos ??= [];
+  return structuredClone(banco.anexos.filter((a) => a.projeto_id === projetoId && visivel('anexos', a, s)));
+}
+
+export async function enviarAnexo(projetoId, arquivo) {
+  const s = await sessao();
+  const { tipo, ext } = conferirArquivo(arquivo);
+  const projeto = banco.projetos.find((p) => p.id === projetoId);
+  if (!projeto || !visivel('projetos', projeto, s) || !pode(s, 'projetos', 'editar')) negar();
+  if (arquivo.size > LIMITE_DEMO) throw new Error('Na demonstração o limite é 2 MB por arquivo (no sistema de verdade, 20 MB).');
+  const dados = await new Promise((ok, falhar) => {
+    const leitor = new FileReader();
+    leitor.onload = () => ok(leitor.result);
+    leitor.onerror = () => falhar(new Error('Não deu para ler o arquivo.'));
+    leitor.readAsDataURL(arquivo);
+  });
+  const id = novoIdAnexo();
+  const anexo = { id, projeto_id: projetoId, nome: arquivo.name.slice(0, 255), caminho: `${projetoId}/${id}.${ext}`, tipo, tamanho: arquivo.size, enviado_por: s.perfil.id, criado_em: new Date().toISOString(), dados };
+  banco.anexos ??= [];
+  banco.anexos.push(anexo);
+  salvar();
+  return structuredClone(anexo);
+}
+
+function blobDe(dataUrl) {
+  const [cabeca, base64] = dataUrl.split(',');
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  return new Blob([bytes], { type: cabeca.slice(5).split(';')[0] });
+}
+
+export async function linksAnexos(anexos) {
+  return Object.fromEntries(anexos.map((a) => {
+    const guardado = (banco.anexos ?? []).find((x) => x.id === a.id);
+    const url = guardado?.dados ? URL.createObjectURL(blobDe(guardado.dados)) : '';
+    return [a.id, { abrir: url, baixar: url }];
+  }));
+}
+
+export async function apagarAnexo(anexo) {
+  const s = await sessao();
+  const linha = (banco.anexos ?? []).find((a) => a.id === anexo.id);
+  if (!linha || !visivel('anexos', linha, s)) negar();
+  if (!(pode(s, 'projetos', 'apagar') || (linha.enviado_por === s.perfil.id && pode(s, 'projetos', 'editar')))) negar();
+  banco.anexos = banco.anexos.filter((a) => a.id !== anexo.id);
   salvar();
 }
