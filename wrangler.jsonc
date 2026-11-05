@@ -1,0 +1,11 @@
+// Configuração da Cloudflare (Workers com arquivos estáticos).
+// A Cloudflare roda "bash publicar.sh" (monta a pasta publico) e depois
+// "npx wrangler deploy", que publica só a pasta publico, com o _headers.
+{
+  "name": "lookexperience-sistema",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./publico",
+    "not_found_handling": "none"
+  }
+}
