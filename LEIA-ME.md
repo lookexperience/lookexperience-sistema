@@ -8,10 +8,11 @@ Painel online da LOOK para organizar tarefas, calendário, clientes e projetos, 
 
 | Peça | O que faz |
 | --- | --- |
-| `index.html`, `css/`, `js/`, `img/`, `fonts/` | As telas. Não precisam de instalação nem de etapa de build: o Netlify publica a pasta como está. |
+| `index.html`, `css/`, `js/`, `img/`, `fonts/` | As telas. Não precisam de instalação nem de etapa de build: a Cloudflare publica as telas como estão. |
 | `supabase/schema.sql` | O banco de dados: tabelas, permissões por usuário e as regras de segurança. |
 | `js/config.js` | Endereço e chave pública do Supabase. |
-| `netlify.toml` | Configuração de publicação no Netlify. |
+| `publicar.sh` | Publicação na Cloudflare Pages (onde o sistema fica desde nov/2026): monta a pasta `publico/` só com as telas e os cabeçalhos de segurança. Na Cloudflare: comando de build `bash publicar.sh`, pasta de saída `publico`. |
+| `netlify.toml` | Cabeçalhos de segurança (lidos também pelo `publicar.sh` e pelos testes). Era a configuração da Netlify, que ficou sem créditos grátis para publicar. |
 | `js/apresentacao/`, `modelos/` | Tela Apresentações: lê o Word no navegador (`docx.js`) e monta os slides no padrão LOOK (`slides.js`). `modelos/modelo-apresentacao-look.docx` é o modelo para baixar. |
 | `testes/` | Testes automáticos de cada tipo de usuário (banco e telas). Ver `testes/LEIA-ME.md`. |
 
@@ -49,7 +50,7 @@ A chave pública pode ficar no código. Quem protege os dados são as regras do 
 Toda mudança é feita no código, e só vai pro ar com os testes de `testes/` passando:
 
 1. A mudança é feita num ramo separado do repositório no GitHub.
-2. O Netlify gera uma prévia com endereço próprio para conferir.
+2. A Cloudflare gera uma prévia com endereço próprio para conferir.
 3. Aprovada, ela entra no ramo principal e vai pro ar sozinha.
 4. Cada versão fica guardada no GitHub; dá para voltar atrás.
 5. Toda atualização acrescenta uma entrada em `js/versao.js`.
