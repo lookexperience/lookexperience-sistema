@@ -9,7 +9,7 @@
 [[headers]]
   for = "/*"
   [headers.values]
-    Content-Security-Policy = "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://xylbjuooxdfthuxluxsx.supabase.co wss://xylbjuooxdfthuxluxsx.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+    Content-Security-Policy = "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://xylbjuooxdfthuxluxsx.supabase.co; font-src 'self'; connect-src 'self' https://xylbjuooxdfthuxluxsx.supabase.co wss://xylbjuooxdfthuxluxsx.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
     Strict-Transport-Security = "max-age=31536000"
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"

@@ -160,6 +160,43 @@ select pg_temp.limite('comentarios', 'comentarios_tamanhos', 'char_length(btrim(
 select pg_temp.limite('avisos', 'avisos_tamanhos', 'char_length(texto) <= 1000');
 
 -- ---------------------------------------------------------------------
+-- Anexos dos projetos: imagens, PDFs e propostas (Word, PowerPoint,
+-- Excel), até 20 MB cada. O arquivo fica no depósito "anexos" do
+-- Supabase Storage (privado); esta tabela guarda o nome, o tipo e de
+-- qual projeto ele é. Quem vê o projeto vê os anexos dele.
+-- ---------------------------------------------------------------------
+create table if not exists public.anexos (
+  id          uuid primary key default gen_random_uuid(),
+  projeto_id  uuid not null references public.projetos(id) on delete cascade,
+  nome        text not null,
+  caminho     text not null unique,
+  tipo        text not null,
+  tamanho     bigint not null,
+  enviado_por uuid references public.perfis(id) on delete set null default auth.uid(),
+  criado_em   timestamptz not null default now()
+);
+create index if not exists anexos_projeto_idx on public.anexos (projeto_id);
+
+select pg_temp.limite('anexos', 'anexos_tamanhos', 'char_length(btrim(nome)) between 1 and 255 and tamanho between 1 and 20971520');
+select pg_temp.limite('anexos', 'anexos_tipo', $c$tipo in (
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf',
+  'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')$c$);
+-- O arquivo sempre fica na pasta do próprio projeto, com nome sorteado.
+select pg_temp.limite('anexos', 'anexos_caminho', $c$caminho ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}\.[a-z0-9]{1,5}$' and split_part(caminho, '/', 1) = projeto_id::text$c$);
+
+-- Depósito privado: só abre com link assinado, que vale por pouco tempo.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('anexos', 'anexos', false, 20971520, array[
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf',
+  'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-powerpoint', 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'])
+on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+-- ---------------------------------------------------------------------
 -- Funções de permissão (usadas pelas políticas abaixo).
 -- "security definer" deixa a função ler perfis/permissões sem cair
 -- nas próprias regras de segurança (evita um laço infinito).
@@ -389,6 +426,22 @@ drop trigger if exists fixar_autor on public.projetos;
 create trigger fixar_autor before insert or update on public.projetos
   for each row execute function public.fixar_autor();
 
+-- Anexo fica no nome de quem enviou, e não muda depois de enviado.
+create or replace function public.fixar_anexo() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    if auth.uid() is not null then new.enviado_por := auth.uid(); end if;
+    new.criado_em := now();
+    return new;
+  end if;
+  raise exception 'Anexo não pode ser alterado; apague e envie de novo.';
+end $$;
+
+drop trigger if exists fixar_anexo on public.anexos;
+create trigger fixar_anexo before insert or update on public.anexos
+  for each row execute function public.fixar_anexo();
+
 drop trigger if exists marcar_atualizacao on public.tarefas;
 create trigger marcar_atualizacao before update on public.tarefas
   for each row execute function public.marcar_atualizacao();
@@ -451,10 +504,11 @@ alter table public.projetos    enable row level security;
 alter table public.tarefas     enable row level security;
 alter table public.comentarios enable row level security;
 alter table public.avisos      enable row level security;
+alter table public.anexos      enable row level security;
 
 do $$ declare r record; begin
   for r in select policyname, tablename from pg_policies where schemaname = 'public'
-    and tablename in ('modulos','perfis','permissoes','clientes','projetos','tarefas','comentarios','avisos','ajustes')
+    and tablename in ('modulos','perfis','permissoes','clientes','projetos','tarefas','comentarios','avisos','ajustes','anexos')
   loop execute format('drop policy %I on public.%I', r.policyname, r.tablename); end loop;
 end $$;
 
@@ -528,6 +582,35 @@ create policy comentarios_apagar on public.comentarios for delete to authenticat
 create policy avisos_ler on public.avisos for select to authenticated using (usuario_id = auth.uid() and public.esta_ativo());
 create policy avisos_marcar on public.avisos for update to authenticated using (usuario_id = auth.uid());
 create policy avisos_apagar on public.avisos for delete to authenticated using (usuario_id = auth.uid());
+
+-- Anexos: quem vê o projeto vê os anexos; quem pode editar projetos anexa;
+-- apaga quem pode apagar projetos, ou quem enviou (se ainda edita projetos).
+create policy anexos_ler on public.anexos for select to authenticated
+  using (exists (select 1 from public.projetos p where p.id = projeto_id));
+create policy anexos_criar on public.anexos for insert to authenticated
+  with check (public.pode('projetos', 'editar')
+              and exists (select 1 from public.projetos p where p.id = projeto_id));
+create policy anexos_apagar on public.anexos for delete to authenticated
+  using (exists (select 1 from public.projetos p where p.id = projeto_id)
+         and (public.pode('projetos', 'apagar')
+              or (enviado_por = auth.uid() and public.pode('projetos', 'editar'))));
+
+-- Os arquivos em si (Storage) seguem a tabela de anexos: só se lê o arquivo
+-- cujo anexo a pessoa vê; só se envia para um caminho que ela mesma acabou
+-- de registrar; só se apaga o que ela pode apagar. Ninguém substitui arquivo.
+drop policy if exists anexos_arquivo_ler on storage.objects;
+drop policy if exists anexos_arquivo_enviar on storage.objects;
+drop policy if exists anexos_arquivo_apagar on storage.objects;
+create policy anexos_arquivo_ler on storage.objects for select to authenticated
+  using (bucket_id = 'anexos' and exists (select 1 from public.anexos a where a.caminho = name));
+create policy anexos_arquivo_enviar on storage.objects for insert to authenticated
+  with check (bucket_id = 'anexos' and exists (
+    select 1 from public.anexos a where a.caminho = name and a.enviado_por = auth.uid()));
+create policy anexos_arquivo_apagar on storage.objects for delete to authenticated
+  using (bucket_id = 'anexos' and exists (
+    select 1 from public.anexos a join public.projetos p on p.id = a.projeto_id
+    where a.caminho = name and (public.pode('projetos', 'apagar')
+      or (a.enviado_por = auth.uid() and public.pode('projetos', 'editar')))));
 
 -- ---------------------------------------------------------------------
 -- Visitante sem login (papel "anon" do Supabase) não toca em nada:

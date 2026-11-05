@@ -294,6 +294,77 @@ reset role;
 update permissoes set ver = true where usuario_id = '00000000-0000-0000-0000-0000000000bb' and modulo = 'projetos';
 set role authenticated;
 
+-- ---------------------------------------------------------------------
+-- ANEXOS dos projetos (tabela + arquivos no Storage)
+-- ---------------------------------------------------------------------
+reset role;
+insert into storage.buckets (id, name) values ('anexos', 'anexos') on conflict do nothing;
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.ok(teste.linhas($$insert into anexos (id, projeto_id, nome, caminho, tipo, tamanho, enviado_por) values
+  ('a0000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'Proposta Lotus.pdf', '20000000-0000-0000-0000-000000000001/a0000000-0000-0000-0000-000000000001.pdf', 'application/pdf', 120000, '00000000-0000-0000-0000-0000000000bb')$$) = 1, 'Admin anexa um PDF ao projeto');
+select teste.ok((select enviado_por = '00000000-0000-0000-0000-0000000000aa' from anexos where id = 'a0000000-0000-0000-0000-000000000001'), 'Anexo fica no nome de quem enviou (não dá para pôr no nome de outro)');
+select teste.ok(teste.linhas($$insert into storage.objects (bucket_id, name) values ('anexos', '20000000-0000-0000-0000-000000000001/a0000000-0000-0000-0000-000000000001.pdf')$$) = 1, 'Admin envia o arquivo do anexo registrado');
+select teste.ok(teste.linhas($$insert into storage.objects (bucket_id, name) values ('anexos', '20000000-0000-0000-0000-000000000001/b0000000-0000-0000-0000-000000000009.pdf')$$) = -1, 'Ataque: arquivo sem anexo registrado não é aceito no depósito');
+select teste.ok(teste.linhas($$insert into anexos (id, projeto_id, nome, caminho, tipo, tamanho) values
+  ('a0000000-0000-0000-0000-0000000000f1', '20000000-0000-0000-0000-0000000000f1', 'Contrato secreto.pdf', '20000000-0000-0000-0000-0000000000f1/a0000000-0000-0000-0000-0000000000f1.pdf', 'application/pdf', 5000)$$) = 1, 'Admin anexa contrato no projeto secreto');
+insert into storage.objects (bucket_id, name) values ('anexos', '20000000-0000-0000-0000-0000000000f1/a0000000-0000-0000-0000-0000000000f1.pdf');
+
+-- Ataques no tipo, no tamanho e no lugar do arquivo
+select teste.ok(teste.linhas($$insert into anexos (projeto_id, nome, caminho, tipo, tamanho) values ('20000000-0000-0000-0000-000000000001', 'pagina.html', '20000000-0000-0000-0000-000000000001/a0000000-0000-0000-0000-000000000002.html', 'text/html', 100)$$) = -1, 'Ataque: página HTML não é aceita como anexo');
+select teste.ok(teste.linhas($$insert into anexos (projeto_id, nome, caminho, tipo, tamanho) values ('20000000-0000-0000-0000-000000000001', 'logo.svg', '20000000-0000-0000-0000-000000000001/a0000000-0000-0000-0000-000000000003.svg', 'image/svg+xml', 100)$$) = -1, 'Ataque: SVG (que pode carregar código) não é aceito');
+select teste.ok(teste.linhas($$insert into anexos (projeto_id, nome, caminho, tipo, tamanho) values ('20000000-0000-0000-0000-000000000001', 'video.pdf', '20000000-0000-0000-0000-000000000001/a0000000-0000-0000-0000-000000000004.pdf', 'application/pdf', 30000000)$$) = -1, 'Arquivo acima de 20 MB é recusado');
+select teste.ok(teste.linhas($$insert into anexos (projeto_id, nome, caminho, tipo, tamanho) values ('20000000-0000-0000-0000-000000000001', 'x.pdf', '20000000-0000-0000-0000-0000000000f1/a0000000-0000-0000-0000-000000000005.pdf', 'application/pdf', 100)$$) = -1, 'Ataque: arquivo não vai para a pasta de outro projeto');
+select teste.ok(teste.linhas($$insert into anexos (projeto_id, nome, caminho, tipo, tamanho) values ('20000000-0000-0000-0000-000000000001', 'x.pdf', '20000000-0000-0000-0000-000000000001/../../perfis.pdf', 'application/pdf', 100)$$) = -1, 'Ataque: caminho com "../" é recusado');
+
+-- Gerente (edita projetos, não apaga). Aqui ela não tem "ver todos os
+-- projetos": enxerga o Rebranding só pela tarefa dela.
+reset role;
+update permissoes set ver = false where usuario_id = '00000000-0000-0000-0000-0000000000bb' and modulo = 'projetos';
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok((select count(*) = 1 from anexos), 'Gerente vê só os anexos dos projetos que vê');
+select teste.ok(teste.linhas($$select * from storage.objects where name like '20000000-0000-0000-0000-0000000000f1/%'$$) = 0, 'Gerente não lê o arquivo do projeto secreto');
+select teste.ok(teste.linhas($$insert into anexos (id, projeto_id, nome, caminho, tipo, tamanho) values
+  ('a0000000-0000-0000-0000-000000000006', '20000000-0000-0000-0000-000000000001', 'Moodboard.jpg', '20000000-0000-0000-0000-000000000001/a0000000-0000-0000-0000-000000000006.jpg', 'image/jpeg', 800000)$$) = 1, 'Gerente anexa imagem ao projeto');
+select teste.ok(teste.linhas($$insert into storage.objects (bucket_id, name) values ('anexos', '20000000-0000-0000-0000-000000000001/a0000000-0000-0000-0000-000000000006.jpg')$$) = 1, 'Gerente envia o arquivo da imagem');
+select teste.ok(teste.linhas($$insert into anexos (projeto_id, nome, caminho, tipo, tamanho) values ('20000000-0000-0000-0000-0000000000f1', 'x.pdf', '20000000-0000-0000-0000-0000000000f1/a0000000-0000-0000-0000-000000000007.pdf', 'application/pdf', 100)$$) = -1, 'Ataque: gerente não anexa em projeto que não vê');
+select teste.ok(teste.linhas($$insert into storage.objects (bucket_id, name) values ('anexos', '20000000-0000-0000-0000-000000000001/a0000000-0000-0000-0000-000000000001.pdf')$$) = -1, 'Ataque: ninguém substitui o arquivo de outra pessoa');
+select teste.ok(teste.linhas($$update storage.objects set name = name || 'x' where bucket_id = 'anexos'$$) = 0, 'Ataque: ninguém renomeia arquivos do depósito');
+select teste.ok(teste.linhas($$update anexos set projeto_id = '20000000-0000-0000-0000-0000000000f1' where id = 'a0000000-0000-0000-0000-000000000006'$$) <= 0, 'Ataque: anexo não muda de projeto depois de enviado');
+select teste.ok(teste.linhas($$delete from storage.objects where name = '20000000-0000-0000-0000-000000000001/a0000000-0000-0000-0000-000000000001.pdf'$$) = 0
+  and teste.linhas($$delete from anexos where id = 'a0000000-0000-0000-0000-000000000001'$$) = 0, 'Gerente sem "apagar" não apaga anexo de outra pessoa');
+select teste.ok(teste.linhas($$delete from storage.objects where name = '20000000-0000-0000-0000-000000000001/a0000000-0000-0000-0000-000000000006.jpg'$$) = 1
+  and teste.linhas($$delete from anexos where id = 'a0000000-0000-0000-0000-000000000006'$$) = 1, 'Gerente apaga o anexo que ela mesma enviou');
+
+reset role;
+update permissoes set ver = true where usuario_id = '00000000-0000-0000-0000-0000000000bb' and modulo = 'projetos';
+set role authenticated;
+
+-- Freelancer (vê o projeto só pela tarefa dele, não edita projetos)
+select teste.como('00000000-0000-0000-0000-0000000000cc');
+select teste.ok((select count(*) = 1 from anexos) and (select count(*) = 1 from storage.objects), 'Freelancer vê os anexos do projeto da tarefa dele');
+select teste.ok(teste.linhas($$insert into anexos (projeto_id, nome, caminho, tipo, tamanho) values ('20000000-0000-0000-0000-000000000001', 'x.pdf', '20000000-0000-0000-0000-000000000001/a0000000-0000-0000-0000-000000000008.pdf', 'application/pdf', 100)$$) = -1, 'Freelancer não anexa (não edita projetos)');
+select teste.ok(teste.linhas($$delete from storage.objects where bucket_id = 'anexos'$$) = 0, 'Ataque: freelancer não apaga arquivos');
+
+-- Conta nova, conta desativada e visitante sem login
+select teste.como('00000000-0000-0000-0000-0000000000dd');
+select teste.ok((select count(*) = 0 from anexos) and (select count(*) = 0 from storage.objects), 'Conta nova não vê anexos nem arquivos');
+select teste.como('00000000-0000-0000-0000-0000000000ee');
+select teste.ok((select count(*) = 0 from anexos) and (select count(*) = 0 from storage.objects), 'Conta desativada não vê anexos nem arquivos');
+reset role;
+set role anon;
+select teste.como(null);
+select teste.ok(teste.linhas($$select * from anexos$$) = -1 and teste.linhas($$select * from storage.objects$$) = 0, 'Ataque: visitante sem login não vê anexos nem arquivos');
+reset role;
+set role authenticated;
+
+-- Apagar o projeto leva os anexos junto
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+delete from storage.objects where name like '20000000-0000-0000-0000-0000000000f1/%';
+select teste.ok(teste.linhas($$delete from projetos where id = '20000000-0000-0000-0000-0000000000f1'$$) = 1, 'Admin apaga o projeto secreto');
+select teste.ok((select count(*) = 0 from anexos where projeto_id = '20000000-0000-0000-0000-0000000000f1'), 'Apagar o projeto apaga os anexos dele');
+
 -- Visitante sem login chamando as funções do banco direto pela API
 reset role;
 set role anon;

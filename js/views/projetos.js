@@ -2,6 +2,7 @@ import { STATUS_PROJETO, STATUS, nomeDe } from '../config.js';
 import { pode } from '../permissoes.js';
 import { esc, $, dataCurta, avisar, iniciais, estaAtrasada } from '../util.js';
 import { abrirModal, opcoes } from './modal.js';
+import { ACEITOS, ehImagem, tamanhoLegivel, rotuloTipo } from '../anexos.js';
 import { filtros, paletaCores, corCliente, quando, ligarTarefas } from './comum.js';
 
 // O que cada pessoa deixou recolhido fica guardado neste computador.
@@ -128,10 +129,17 @@ export function abrirProjeto(ctx, projeto, clienteId = '', aoSalvar) {
       <div class="campo"><label>Início</label><input type="date" name="inicio" value="${esc(p.inicio ?? '')}" ${dis}></div>
       <div class="campo"><label>Fim previsto</label><input type="date" name="fim" value="${esc(p.fim ?? '')}" ${dis}></div>
       <div class="campo"><label>Status</label><select name="status" ${dis}>${opcoes(STATUS_PROJETO, p.status)}</select></div>
-      <div class="campo inteiro"><label>Descrição</label><textarea name="descricao" maxlength="20000" ${dis}>${esc(p.descricao)}</textarea></div></form>`,
+      <div class="campo inteiro"><label>Descrição</label><textarea name="descricao" maxlength="20000" ${dis}>${esc(p.descricao)}</textarea></div></form>
+      ${novo ? '<p class="fraco">Depois de salvar o projeto, abra de novo para anexar imagens, PDFs e propostas.</p>' : `
+      <div class="anexos" id="anexos">
+        <div class="anexos-topo"><h3>Anexos</h3><span class="fraco">Imagens, PDF, Word, PowerPoint e Excel, até 20 MB</span><span class="espaco"></span>
+          ${pode(s, 'projetos', 'editar') ? `<label class="botao pequeno" id="anexar">+ Anexar<input type="file" id="arquivos" multiple accept="${ACEITOS}" hidden></label>` : ''}</div>
+        <div id="lista-anexos" class="lista-anexos"><span class="fraco">Carregando…</span></div>
+      </div>`}`,
     rodape: `${!novo && pode(s, 'projetos', 'apagar') ? '<button class="botao perigo" id="apagar">Apagar</button>' : ''}<span class="espaco"></span>
       ${podeSalvar ? '<button class="botao primario" id="salvar">Salvar</button>' : ''}`,
   });
+  if (!novo) ligarAnexos(ctx, p, el);
   $('#salvar', el)?.addEventListener('click', async () => {
     const form = $('#form-projeto', el);
     if (!form.reportValidity()) return;
@@ -146,4 +154,73 @@ export function abrirProjeto(ctx, projeto, clienteId = '', aoSalvar) {
     if (e.target.dataset.confirmar !== 'sim') { e.target.dataset.confirmar = 'sim'; e.target.textContent = 'Clique de novo para apagar'; return; }
     try { await ctx.db().apagar('projetos', p.id); fechar(); avisar('Projeto apagado'); await ctx.recarregar(); aoSalvar?.(); } catch (err) { avisar(err.message); }
   });
+}
+
+// ---------- Anexos do projeto ----------
+async function ligarAnexos(ctx, projeto, el) {
+  const s = ctx.estado.sessao;
+  const lista = $('#lista-anexos', el);
+  const eu = s.perfil.id;
+  const podeApagar = (a) => pode(s, 'projetos', 'apagar') || (a.enviado_por === eu && pode(s, 'projetos', 'editar'));
+
+  async function desenhar() {
+    let anexos;
+    let links;
+    try {
+      anexos = await ctx.db().listarAnexos(projeto.id);
+      links = await ctx.db().linksAnexos(anexos);
+    } catch (err) { lista.innerHTML = `<span class="fraco">${esc(err.message)}</span>`; return; }
+    if (!anexos.length) { lista.innerHTML = '<span class="fraco">Nenhum anexo ainda.</span>'; return; }
+    lista.innerHTML = anexos.map((a) => {
+      const l = links[a.id] ?? {};
+      const capa = ehImagem(a) && l.abrir
+        ? `<img src="${esc(l.abrir)}" alt="" loading="lazy">`
+        : `<span class="tipo-arquivo">${esc(rotuloTipo(a))}</span>`;
+      const quem = ctx.nomePerfil(a.enviado_por);
+      return `<div class="anexo" data-anexo="${esc(a.id)}">
+        <a class="capa" href="${esc(l.abrir)}" target="_blank" rel="noopener noreferrer" title="Abrir">${capa}</a>
+        <div class="info"><a class="nome" href="${esc(l.abrir)}" target="_blank" rel="noopener noreferrer">${esc(a.nome)}</a>
+          <span class="fraco">${tamanhoLegivel(a.tamanho)}${quem ? ` · ${esc(quem)}` : ''} · ${dataCurta(a.criado_em)}</span></div>
+        <a class="botao pequeno sutil" href="${esc(l.baixar)}" download="${esc(a.nome)}" rel="noopener noreferrer">Baixar</a>
+        ${podeApagar(a) ? '<button class="botao pequeno sutil perigo" data-apagar-anexo>Apagar</button>' : ''}
+      </div>`;
+    }).join('');
+    lista.querySelectorAll('[data-apagar-anexo]').forEach((b) => b.addEventListener('click', async () => {
+      if (b.dataset.confirmar !== 'sim') { b.dataset.confirmar = 'sim'; b.textContent = 'Clique de novo'; return; }
+      const anexo = anexos.find((a) => a.id === b.closest('[data-anexo]').dataset.anexo);
+      try { await ctx.db().apagarAnexo(anexo); avisar('Anexo apagado'); await desenhar(); } catch (err) { avisar(err.message); }
+    }));
+  }
+
+  async function enviar(arquivos) {
+    const botao = $('#anexar', el);
+    botao?.classList.add('enviando');
+    let enviados = 0;
+    for (const arquivo of arquivos) {
+      if (botao) botao.firstChild.textContent = `Enviando ${enviados + 1} de ${arquivos.length}…`;
+      try { await ctx.db().enviarAnexo(projeto.id, arquivo); enviados++; } catch (err) { avisar(err.message); }
+    }
+    if (botao) { botao.firstChild.textContent = '+ Anexar'; botao.classList.remove('enviando'); }
+    if (enviados) avisar(enviados === 1 ? 'Anexo enviado' : `${enviados} anexos enviados`);
+    await desenhar();
+  }
+
+  const campo = $('#arquivos', el);
+  campo?.addEventListener('change', async () => {
+    const arquivos = [...campo.files];
+    campo.value = '';
+    if (arquivos.length) await enviar(arquivos);
+  });
+  // Arrastar arquivos para cima da área de anexos também envia.
+  const area = $('#anexos', el);
+  if (campo) {
+    area.addEventListener('dragover', (e) => { e.preventDefault(); area.classList.add('soltando'); });
+    area.addEventListener('dragleave', () => area.classList.remove('soltando'));
+    area.addEventListener('drop', async (e) => {
+      e.preventDefault(); area.classList.remove('soltando');
+      const arquivos = [...(e.dataTransfer?.files ?? [])];
+      if (arquivos.length) await enviar(arquivos);
+    });
+  }
+  await desenhar();
 }
