@@ -7,7 +7,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 rm -rf publico
 mkdir publico
-cp -r index.html css fonts img js modelos publico/
+cp -r index.html briefing.html css fonts img js modelos publico/
 # Mesmos cabeçalhos do netlify.toml, no formato da Cloudflare (_headers).
 csp=$(grep -o 'Content-Security-Policy = "[^"]*"' netlify.toml | sed 's/^Content-Security-Policy = "//; s/"$//')
 cat > publico/_headers <<CAB

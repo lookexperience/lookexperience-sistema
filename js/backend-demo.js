@@ -55,7 +55,7 @@ function semente() {
     c('c-fusion', 'Fusion Soldas', '', { cor: '#D08C3C' }),
     c('c-ketlin', 'Ketlin Joias', 'Ketlin', { cor: '#B5638F' }),
   ];
-  const p = (id, cliente_id, nome, tipo, inicio, fim) => ({ id, cliente_id, nome, tipo, status: 'ativo', inicio, fim, descricao: '', criado_por: pablo, criado_em: agora });
+  const p = (id, cliente_id, nome, tipo, inicio, fim) => ({ id, cliente_id, nome, tipo, status: 'ativo', inicio, fim, descricao: '', briefing: 'dispensado', criado_por: pablo, criado_em: agora });
   const projetos = [
     p('p-lotus', 'c-lotus', 'Rebranding + conteúdo mensal', 'Rebranding', diaRelativo(-5), diaRelativo(40)),
     p('p-flambe', 'c-flambe', 'Identidade visual', 'Identidade visual', diaRelativo(-10), diaRelativo(25)),
@@ -94,7 +94,7 @@ function semente() {
   const avisos = [
     { id: novoId(), usuario_id: pablo, texto: 'Marina Exemplo marcou você em: Fechar cor do nome e acabamento da medalha', tarefa_id: tarefas[2].id, lido: false, criado_em: agora },
   ];
-  return { perfis, permissoes, clientes, projetos, tarefas, comentarios, avisos, anexos: [] };
+  return { perfis, permissoes, clientes, projetos, tarefas, comentarios, avisos, anexos: [], briefings: [] };
 }
 
 export async function iniciar() {
@@ -103,6 +103,8 @@ export async function iniciar() {
     if (salvo?.banco) ({ banco, usuarioAtual } = salvo);
   } catch { /* sem armazenamento */ }
   for (const t of banco?.tarefas ?? []) t.responsaveis ??= t.responsavel_id ? [t.responsavel_id] : [];
+  for (const p of banco?.projetos ?? []) p.briefing ??= 'dispensado';
+  if (banco) banco.briefings ??= [];
   if (!banco) { banco = semente(); usuarioAtual = 'u-pablo'; salvar(); }
 }
 
@@ -143,6 +145,7 @@ function visivel(tabela, linha, s) {
     case 'comentarios': return banco.tarefas.some((t) => t.id === linha.tarefa_id && tarefaVisivel(t));
     case 'avisos': return linha.usuario_id === eu;
     case 'anexos': return banco.projetos.some((p) => p.id === linha.projeto_id && visivel('projetos', p, s));
+    case 'briefings': return pode(s, 'projetos', 'ver') && banco.projetos.some((p) => p.id === linha.projeto_id && visivel('projetos', p, s));
     default: return false;
   }
 }
@@ -162,8 +165,10 @@ function arrumarResponsaveis(alvo, lista) {
   alvo.responsavel_id = limpa[0] ?? null;
 }
 
-function avisar(usuario_id, texto, tarefa_id) {
-  banco.avisos.unshift({ id: novoId(), usuario_id, texto, tarefa_id, lido: false, criado_em: new Date().toISOString() });
+const novoToken = () => Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
+
+function avisar(usuario_id, texto, tarefa_id, projeto_id = null) {
+  banco.avisos.unshift({ id: novoId(), usuario_id, texto, tarefa_id, projeto_id, lido: false, criado_em: new Date().toISOString() });
 }
 
 export async function inserir(tabela, dados) {
@@ -191,6 +196,10 @@ export async function inserir(tabela, dados) {
         avisar(p.id, `${s.perfil.nome} ${marcado ? 'marcou você em' : 'comentou em'}: ${tarefa.titulo}`, tarefa.id);
       }
     }
+  } else if (tabela === 'briefings') {
+    const projeto = banco.projetos.find((p) => p.id === linha.projeto_id);
+    if (!projeto || !visivel('projetos', projeto, s) || !pode(s, 'projetos', 'editar')) negar();
+    Object.assign(linha, { token: novoToken(), status: 'aguardando', respostas: null, recebido_em: null, criado_por: eu });
   } else negar();
   banco[tabela].push(linha);
   salvar();
@@ -242,6 +251,7 @@ export async function apagar(tabela, id) {
     tarefas: () => pode(s, 'tarefas', 'apagar'),
     clientes: () => pode(s, 'clientes', 'apagar'),
     projetos: () => pode(s, 'projetos', 'apagar'),
+    briefings: () => pode(s, 'projetos', 'editar') && (linha.status === 'aguardando' || pode(s, 'projetos', 'apagar')),
     comentarios: () => linha.autor_id === s.perfil.id || s.perfil.admin,
     avisos: () => true,
     perfis: () => s.perfil.admin && id !== s.perfil.id,
@@ -254,6 +264,7 @@ export async function apagar(tabela, id) {
   if (tabela === 'clientes') banco.projetos.forEach((p) => { if (p.cliente_id === id) p.cliente_id = null; });
   if (tabela === 'projetos') banco.tarefas.forEach((t) => { if (t.projeto_id === id) t.projeto_id = null; });
   if (tabela === 'projetos') banco.anexos = (banco.anexos ?? []).filter((a) => a.projeto_id !== id);
+  if (tabela === 'projetos') banco.briefings = (banco.briefings ?? []).filter((b) => b.projeto_id !== id);
   salvar();
 }
 
@@ -320,5 +331,34 @@ export async function apagarAnexo(anexo) {
   if (!linha || !visivel('anexos', linha, s)) negar();
   if (!(pode(s, 'projetos', 'apagar') || (linha.enviado_por === s.perfil.id && pode(s, 'projetos', 'editar')))) negar();
   banco.anexos = banco.anexos.filter((a) => a.id !== anexo.id);
+  salvar();
+}
+
+// ---------- Briefing pelo link do cliente (sem login) ----------
+const tokenValido = (token) => /^[0-9a-f]{64}$/.test(token ?? '');
+
+export async function abrirBriefing(token) {
+  const b = tokenValido(token) && (banco.briefings ?? []).find((x) => x.token === token);
+  if (!b) return null;
+  const projeto = banco.projetos.find((p) => p.id === b.projeto_id);
+  const cliente = banco.clientes.find((c) => c.id === projeto?.cliente_id);
+  return { titulo: b.titulo, status: b.status, cliente: cliente?.nome ?? '', perguntas: b.status === 'aguardando' ? structuredClone(b.perguntas) : null };
+}
+
+export async function enviarBriefing(token, respostas) {
+  const b = tokenValido(token) && (banco.briefings ?? []).find((x) => x.token === token);
+  if (!b) throw new Error('Link de briefing inválido.');
+  if (b.status !== 'aguardando') throw new Error('Este briefing já foi enviado. Obrigado!');
+  const certo = respostas && typeof respostas === 'object' && !Array.isArray(respostas)
+    && Object.entries(respostas).every(([k, v]) => /^[a-z0-9_]{1,40}$/.test(k)
+      && ((typeof v === 'string' && v.length <= 10000) || (Array.isArray(v) && v.length <= 30 && v.every((x) => typeof x === 'string' && x.length <= 1000))));
+  if (!certo) throw new Error('Respostas inválidas.');
+  Object.assign(b, { respostas: structuredClone(respostas), status: 'recebido', recebido_em: new Date().toISOString() });
+  const projeto = banco.projetos.find((p) => p.id === b.projeto_id);
+  if (projeto) projeto.briefing = 'recebido';
+  const cliente = banco.clientes.find((c) => c.id === projeto?.cliente_id);
+  for (const p of banco.perfis) {
+    if (p.ativo && (p.admin || p.id === b.criado_por)) avisar(p.id, `Briefing recebido: ${cliente ? `${cliente.nome} · ` : ''}${projeto?.nome ?? ''}`, null, projeto?.id ?? null);
+  }
   salvar();
 }

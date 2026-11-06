@@ -2,6 +2,18 @@
 // entrada no topo desta lista; a tela "Sobre o sistema" mostra tudo.
 export const HISTORICO = [
   {
+    versao: '0.6.0',
+    data: '2026-11-06',
+    titulo: 'Briefing do cliente',
+    itens: [
+      'Na janela do projeto, "+ Gerar link de briefing" cria um link exclusivo para o cliente (modelos: marca e programa ao vivo)',
+      'O cliente responde pelo link, sem precisar de conta; o que ele digita fica salvo no navegador até enviar',
+      'As respostas ficam no projeto ("Ver respostas") e quem gerou o link e os administradores recebem aviso',
+      'Projeto novo de cliente começa com "Briefing pendente": aparece na lista de projetos, nos cartões e nas tarefas, sem travar nada',
+      'O link só abre aquele briefing, não pode ser respondido duas vezes e ninguém da equipe muda as respostas',
+    ],
+  },
+  {
     versao: '0.5.0',
     data: '2026-11-05',
     titulo: 'Vários responsáveis por tarefa',

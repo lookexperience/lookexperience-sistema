@@ -26,6 +26,7 @@ export async function abrirTarefa(ctx, tarefa, padrao = {}) {
     .map((p) => ({ chave: p.id, nome: p.nome }));
 
   const corpo = `
+    ${ctx.projeto(t.projeto_id)?.briefing === 'aguardando' ? '<div class="alerta-briefing" id="alerta-briefing">O cliente ainda não respondeu o briefing deste projeto. Confira na janela do projeto, em Projetos.</div>' : ''}
     <form id="form-tarefa" class="grade-campos">
       <div class="campo inteiro"><label>Título</label><input type="text" name="titulo" maxlength="300" required value="${esc(t.titulo)}" ${bloqueado('titulo')}></div>
       <div class="campo"><label>Cliente</label><select name="cliente_id" ${bloqueado('projeto_id')}>${opcoes(clientes, clienteAtual, 'Interno (sem cliente)')}</select></div>

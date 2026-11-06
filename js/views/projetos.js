@@ -3,6 +3,7 @@ import { pode } from '../permissoes.js';
 import { esc, $, dataCurta, avisar, iniciais, estaAtrasada } from '../util.js';
 import { abrirModal, opcoes } from './modal.js';
 import { ACEITOS, ehImagem, tamanhoLegivel, rotuloTipo } from '../anexos.js';
+import { ligarBriefings, BRIEFING_PROJETO, etiquetaBriefing } from './briefing.js';
 import { filtros, paletaCores, corCliente, quando, ligarTarefas, avatares } from './comum.js';
 
 // O que cada pessoa deixou recolhido fica guardado neste computador.
@@ -27,7 +28,7 @@ export async function render(el, ctx) {
     const fechado = recolhidos.has(`p:${p.id}`);
     return `<tr class="clicavel" data-id="${p.id}">
       <td><button class="botao-seta" data-recolher="p:${p.id}" title="Mostrar ou esconder as tarefas">${seta(fechado)}</button><b>${esc(p.nome)}</b> <span class="fraco">(${tarefas.length})</span></td>
-      <td>${esc(p.tipo)}</td><td><span class="etiqueta">${nomeDe(STATUS_PROJETO, p.status)}</span></td>
+      <td>${esc(p.tipo)}</td><td><span class="etiqueta">${nomeDe(STATUS_PROJETO, p.status)}</span>${etiquetaBriefing(p)}</td>
       <td>${p.inicio ? dataCurta(p.inicio) : '—'} a ${p.fim ? dataCurta(p.fim) : '—'}</td>
       <td><div class="barra"><i style="width:${pct}%"></i></div><div class="fraco">${feitas} de ${tarefas.length} tarefas</div></td>
       <td><button class="botao pequeno" data-quadro="${p.id}">Abrir no quadro</button></td></tr>
@@ -115,7 +116,7 @@ export async function render(el, ctx) {
 export function abrirProjeto(ctx, projeto, clienteId = '', aoSalvar) {
   const s = ctx.estado.sessao;
   const novo = !projeto;
-  const p = projeto ?? { nome: '', cliente_id: clienteId, tipo: '', status: 'ativo', inicio: '', fim: '', descricao: '' };
+  const p = projeto ?? { nome: '', cliente_id: clienteId, tipo: '', status: 'ativo', inicio: '', fim: '', descricao: '', briefing: 'aguardando' };
   const podeSalvar = novo ? pode(s, 'projetos', 'criar') : pode(s, 'projetos', 'editar');
   const dis = podeSalvar ? '' : 'disabled';
   const clientes = ctx.estado.clientes.map((c) => ({ chave: c.id, nome: c.nome }));
@@ -128,8 +129,10 @@ export function abrirProjeto(ctx, projeto, clienteId = '', aoSalvar) {
       <div class="campo"><label>Início</label><input type="date" name="inicio" value="${esc(p.inicio ?? '')}" ${dis}></div>
       <div class="campo"><label>Fim previsto</label><input type="date" name="fim" value="${esc(p.fim ?? '')}" ${dis}></div>
       <div class="campo"><label>Status</label><select name="status" ${dis}>${opcoes(STATUS_PROJETO, p.status)}</select></div>
+      <div class="campo"><label>Briefing do cliente</label><select name="briefing" ${dis}>${opcoes(BRIEFING_PROJETO, p.briefing ?? 'dispensado')}</select></div>
       <div class="campo inteiro"><label>Descrição</label><textarea name="descricao" maxlength="20000" ${dis}>${esc(p.descricao)}</textarea></div></form>
-      ${novo ? '<p class="fraco">Depois de salvar o projeto, abra de novo para anexar imagens, PDFs e propostas.</p>' : `
+      ${novo ? '<p class="fraco">Depois de salvar o projeto, abra de novo para gerar o link do briefing e anexar imagens, PDFs e propostas.</p>' : `
+      <div class="briefings" id="briefings"></div>
       <div class="anexos" id="anexos">
         <div class="anexos-topo"><h3>Anexos</h3><span class="fraco">Imagens, PDF, Word, PowerPoint e Excel, até 20 MB</span><span class="espaco"></span>
           ${pode(s, 'projetos', 'editar') ? `<label class="botao pequeno" id="anexar">+ Anexar<input type="file" id="arquivos" multiple accept="${ACEITOS}" hidden></label>` : ''}</div>
@@ -138,12 +141,14 @@ export function abrirProjeto(ctx, projeto, clienteId = '', aoSalvar) {
     rodape: `${!novo && pode(s, 'projetos', 'apagar') ? '<button class="botao perigo" id="apagar">Apagar</button>' : ''}<span class="espaco"></span>
       ${podeSalvar ? '<button class="botao primario" id="salvar">Salvar</button>' : ''}`,
   });
-  if (!novo) ligarAnexos(ctx, p, el);
+  if (!novo) { ligarAnexos(ctx, p, el); ligarBriefings(ctx, p, $('#briefings', el)); }
   $('#salvar', el)?.addEventListener('click', async () => {
     const form = $('#form-projeto', el);
     if (!form.reportValidity()) return;
     const f = Object.fromEntries(new FormData(form));
     const dados = { ...f, cliente_id: f.cliente_id || null, inicio: f.inicio || null, fim: f.fim || null };
+    // Projeto interno (sem cliente) não tem quem responda o briefing.
+    if (!dados.cliente_id && dados.briefing === 'aguardando') dados.briefing = 'dispensado';
     try {
       if (novo) await ctx.db().inserir('projetos', dados); else await ctx.db().atualizar('projetos', p.id, dados);
       fechar(); avisar('Projeto salvo'); await ctx.recarregar(); aoSalvar?.();
