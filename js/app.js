@@ -161,6 +161,8 @@ function alternarAvisos() {
     if (!aviso.lido) { await db.atualizar('avisos', aviso.id, { lido: true }); aviso.lido = true; atualizarContador(); }
     const tarefa = estado.tarefas.find((t) => t.id === aviso.tarefa_id);
     if (tarefa) ctx.abrirTarefa(tarefa);
+    const projeto = estado.projetos.find((p) => p.id === aviso.projeto_id);
+    if (projeto) projetos.abrirProjeto(ctx, projeto);
   });
 }
 

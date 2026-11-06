@@ -42,6 +42,7 @@ export function cartaoTarefa(ctx, t, arrastavel = false) {
     <div class="rodape">
       ${etiquetaSetor(t.setor)}${tipo}
       ${t.prioridade === 'urgente' ? '<span class="etiqueta urgente">Urgente</span>' : ''}
+      ${ctx.projeto(t.projeto_id)?.briefing === 'aguardando' ? '<span class="etiqueta briefing-pendente" title="O cliente ainda não respondeu o briefing deste projeto">Sem briefing</span>' : ''}
       <span class="espaco"></span>
       <span class="fraco ${estaAtrasada(t) ? 'atrasada' : ''}">${quando(t)}</span>
       ${avatares(ctx, t)}

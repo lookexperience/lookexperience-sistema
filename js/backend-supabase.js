@@ -31,6 +31,7 @@ function traduzirErro(msg) {
   if (/exceeded the maximum allowed size|Payload too large/i.test(msg)) return 'Arquivo grande demais: o limite é 20 MB.';
   if (/anexos_tipo/i.test(msg)) return 'Esse tipo de arquivo não é aceito: só imagens, PDF, Word, PowerPoint e Excel.';
   if (/anexos_tamanhos/i.test(msg)) return 'Arquivo grande demais: o limite é 20 MB.';
+  if (/briefings_tamanhos/i.test(msg)) return 'Briefing grande demais.';
   if (/Failed to fetch|NetworkError/i.test(msg)) return 'Sem conexão com o servidor. Confira a internet e tente de novo.';
   return msg;
 }
@@ -132,4 +133,13 @@ export async function apagarAnexo(anexo) {
   const removidos = checar(await deposito().remove([anexo.caminho]));
   if (!removidos?.length) throw new Error('Você não tem permissão para isso.');
   await apagar('anexos', anexo.id);
+}
+
+// ---------- Briefing pelo link do cliente (sem login) ----------
+export async function abrirBriefing(token) {
+  return checar(await sb.rpc('briefing_abrir', { p_token: token }));
+}
+
+export async function enviarBriefing(token, respostas) {
+  checar(await sb.rpc('briefing_enviar', { p_token: token, p_respostas: respostas }));
 }

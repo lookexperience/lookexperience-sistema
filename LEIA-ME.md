@@ -45,6 +45,14 @@ A chave pública pode ficar no código. Quem protege os dados são as regras do 
 - Os arquivos ficam no depósito privado `anexos` do Supabase Storage (criado pelo `schema.sql`). O plano grátis guarda 1 GB no total; vídeos e arquivos pesados ficam como link do Google Drive na descrição do projeto.
 - Quem vê o projeto vê os anexos; quem pode editar projetos anexa; apaga quem pode apagar projetos ou quem enviou o arquivo.
 
+## Briefing do cliente
+
+- Na janela do projeto: escolha o modelo (marca ou programa ao vivo) e clique em **+ Gerar link de briefing**. Copie o link e mande para o cliente.
+- O cliente responde em `briefing.html#código`, sem login. O código tem 64 letras e números sorteados pelo banco e só abre aquele briefing. Depois de enviado, o link não aceita outra resposta.
+- As respostas ficam no projeto (**Ver respostas**). Quem gerou o link e os administradores recebem aviso.
+- Projeto novo de cliente começa com **Briefing pendente**. Isso aparece como alerta (lista de projetos, cartões e tarefas), mas não trava nada. No campo "Briefing do cliente" do projeto dá para marcar "Recebido" ou "Não precisa".
+- As perguntas ficam em `js/briefing-modelos.js`. Cada briefing guarda a própria cópia das perguntas, então mudar o modelo não mexe nos que já foram enviados.
+
 ## Como fazer atualizações
 
 Toda mudança é feita no código, e só vai pro ar com os testes de `testes/` passando:

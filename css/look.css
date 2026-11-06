@@ -306,3 +306,37 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .escolha-pessoas .pessoa:has(input:checked) { background: var(--painel-3); border-color: var(--texto, currentColor); }
 .escolha-pessoas .pessoa:has(input:disabled) { cursor: default; opacity: .75; }
 .escolha-pessoas input { margin: 0; }
+
+/* Briefing do cliente */
+.etiqueta.briefing-pendente { color: var(--latao); border-color: var(--latao); }
+.alerta-briefing { border: 1px solid var(--latao); color: var(--osso); background: rgba(184, 149, 90, 0.12); border-radius: var(--raio); padding: 10px 14px; margin: 0 0 14px; font-size: 14px; }
+.briefings { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--linha); }
+.briefing-item { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--linha); }
+.briefing-item .info { flex: 1 1 220px; display: flex; flex-direction: column; min-width: 0; }
+.briefing-item .link-briefing { flex: 1 1 260px; min-width: 0; background: var(--painel-2); border: 1px solid var(--linha-forte); border-radius: 8px; padding: 6px 8px; font-size: 12px; color: var(--texto-2); }
+.gerar-briefing { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.gerar-briefing select { background: var(--painel-2); border: 1px solid var(--linha-forte); border-radius: 8px; padding: 6px 8px; max-width: 100%; }
+.respostas-secao { margin-bottom: 20px; }
+.respostas-secao h3 { margin-bottom: 8px; color: var(--latao); }
+.resposta { padding: 8px 0; border-bottom: 1px solid var(--linha); }
+.resposta .pergunta { font-weight: 700; margin-bottom: 2px; }
+.resposta .texto { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Página do cliente (briefing.html) */
+.pagina-briefing { min-height: 100%; background: radial-gradient(ellipse at 50% -20%, rgba(184, 149, 90, 0.12), transparent 60%), var(--preto); }
+.briefing-publico { width: min(760px, 100%); margin: 0 auto; padding: 40px 16px 80px; }
+.briefing-publico .logo { width: 180px; display: block; margin-bottom: 36px; }
+.briefing-publico .sobre { color: var(--latao); text-transform: uppercase; letter-spacing: 0.08em; font-size: 13px; margin-bottom: 6px; }
+.briefing-publico .descricao { white-space: pre-wrap; color: var(--texto-2); margin: 14px 0 28px; }
+.briefing-publico .secao { background: var(--painel); border: 1px solid var(--linha); border-radius: var(--raio); padding: 20px; margin-bottom: 18px; }
+.briefing-publico .secao h2 { margin-bottom: 6px; }
+.briefing-publico .questao { margin-top: 18px; }
+.briefing-publico .questao.faltando { border-left: 3px solid var(--perigo); padding-left: 10px; }
+.briefing-publico .pergunta { font-weight: 700; margin-bottom: 6px; }
+.briefing-publico .obrigatoria { color: var(--latao); }
+.briefing-publico input[type=text], .briefing-publico input[type=date], .briefing-publico textarea { width: 100%; background: var(--painel-2); border: 1px solid var(--linha-forte); border-radius: 8px; padding: 9px 10px; }
+.briefing-publico .opcoes { display: flex; flex-direction: column; gap: 6px; }
+.briefing-publico .opcao { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.briefing-publico .opcao input.outro { flex: 1 1 160px; width: auto; }
+.briefing-publico .escala { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+.briefing-publico .erro-briefing { color: var(--perigo); min-height: 1.4em; margin: 10px 0; }

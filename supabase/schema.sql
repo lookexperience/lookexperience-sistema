@@ -210,6 +210,38 @@ on conflict (id) do update set public = false, file_size_limit = excluded.file_s
   allowed_mime_types = excluded.allowed_mime_types;
 
 -- ---------------------------------------------------------------------
+-- Briefing do cliente (desde a versão 0.6.0). Depois da proposta aprovada,
+-- a LOOK gera um link exclusivo; o cliente responde sem login e as
+-- respostas ficam no projeto. Enquanto o projeto está "aguardando", o
+-- sistema mostra um alerta no projeto e nas tarefas dele (sem travar nada).
+-- Projetos antigos ficam "dispensado".
+-- ---------------------------------------------------------------------
+alter table public.projetos add column if not exists briefing text not null default 'dispensado';
+select pg_temp.limite('projetos', 'projetos_briefing', $c$briefing in ('dispensado', 'aguardando', 'recebido')$c$);
+
+create table if not exists public.briefings (
+  id          uuid primary key default gen_random_uuid(),
+  projeto_id  uuid not null references public.projetos(id) on delete cascade,
+  modelo      text not null,
+  titulo      text not null,
+  perguntas   jsonb not null,
+  token       text not null unique,
+  status      text not null default 'aguardando',
+  respostas   jsonb,
+  criado_por  uuid references public.perfis(id) on delete set null default auth.uid(),
+  criado_em   timestamptz not null default now(),
+  recebido_em timestamptz
+);
+create index if not exists briefings_projeto_idx on public.briefings (projeto_id);
+-- Aviso de briefing recebido abre o projeto.
+alter table public.avisos add column if not exists projeto_id uuid references public.projetos(id) on delete cascade;
+select pg_temp.limite('briefings', 'briefings_tamanhos', $c$char_length(modelo) between 1 and 40 and char_length(btrim(titulo)) between 1 and 200
+  and jsonb_typeof(perguntas) = 'object' and pg_column_size(perguntas) <= 200000
+  and (respostas is null or (jsonb_typeof(respostas) = 'object' and pg_column_size(respostas) <= 200000))$c$);
+select pg_temp.limite('briefings', 'briefings_status', $c$status in ('aguardando', 'recebido')$c$);
+select pg_temp.limite('briefings', 'briefings_token', $c$token ~ '^[0-9a-f]{64}$'$c$);
+
+-- ---------------------------------------------------------------------
 -- Funções de permissão (usadas pelas políticas abaixo).
 -- "security definer" deixa a função ler perfis/permissões sem cair
 -- nas próprias regras de segurança (evita um laço infinito).
@@ -563,6 +595,90 @@ create trigger avisar_comentario after insert on public.comentarios
 -- ---------------------------------------------------------------------
 -- Políticas de segurança (RLS).
 -- ---------------------------------------------------------------------
+-- Briefing novo: o banco sorteia o link (64 letras e números, impossível de
+-- adivinhar), nasce "aguardando" e só o próprio cliente, pelo link, preenche.
+create or replace function public.preparar_briefing() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'UPDATE' then
+    -- Só a porta do cliente (briefing_enviar) muda o briefing, e só as respostas.
+    if current_setting('look.enviando_briefing', true) is distinct from 'sim' then
+      raise exception 'Briefing não pode ser alterado depois de criado.';
+    end if;
+    new.id := old.id; new.projeto_id := old.projeto_id; new.modelo := old.modelo; new.titulo := old.titulo;
+    new.perguntas := old.perguntas; new.token := old.token; new.criado_por := old.criado_por; new.criado_em := old.criado_em;
+    return new;
+  end if;
+  new.token := replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '');
+  new.status := 'aguardando';
+  new.respostas := null;
+  new.recebido_em := null;
+  new.criado_em := now();
+  if auth.uid() is not null then new.criado_por := auth.uid(); end if;
+  return new;
+end $$;
+
+drop trigger if exists preparar_briefing on public.briefings;
+create trigger preparar_briefing before insert or update on public.briefings
+  for each row execute function public.preparar_briefing();
+
+-- Portas do cliente (sem login). Só funcionam com o link certo e só
+-- mostram aquele briefing: título, perguntas e nome do cliente.
+create or replace function public.briefing_abrir(p_token text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'titulo', b.titulo,
+    'status', b.status,
+    'cliente', coalesce(c.nome, ''),
+    'perguntas', case when b.status = 'aguardando' then b.perguntas end)
+  from briefings b
+  join projetos p on p.id = b.projeto_id
+  left join clientes c on c.id = p.cliente_id
+  where coalesce(p_token, '') ~ '^[0-9a-f]{64}$' and b.token = p_token;
+$$;
+
+create or replace function public.briefing_enviar(p_token text, p_respostas jsonb) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v briefings%rowtype;
+  v_projeto projetos%rowtype;
+  v_cliente text;
+  r record;
+begin
+  if coalesce(p_token, '') !~ '^[0-9a-f]{64}$' then raise exception 'Link de briefing inválido.'; end if;
+  select * into v from briefings where token = p_token for update;
+  if not found then raise exception 'Link de briefing inválido.'; end if;
+  if v.status <> 'aguardando' then raise exception 'Este briefing já foi enviado. Obrigado!'; end if;
+  if p_respostas is null or jsonb_typeof(p_respostas) <> 'object' or pg_column_size(p_respostas) > 200000 then
+    raise exception 'Respostas inválidas.';
+  end if;
+  -- Cada resposta: chave curta; texto até 10 mil letras, ou lista de até 30 opções.
+  for r in select key, value from jsonb_each(p_respostas) loop
+    if r.key !~ '^[a-z0-9_]{1,40}$'
+       or not (
+         (jsonb_typeof(r.value) = 'string' and char_length(r.value #>> '{}') <= 10000)
+         or (jsonb_typeof(r.value) = 'array' and jsonb_array_length(r.value) <= 30
+             and not exists (select 1 from jsonb_array_elements(r.value) e
+                             where jsonb_typeof(e) <> 'string' or char_length(e #>> '{}') > 1000))) then
+      raise exception 'Respostas inválidas.';
+    end if;
+  end loop;
+  if (select count(*) from jsonb_object_keys(p_respostas)) > 400 then raise exception 'Respostas inválidas.'; end if;
+
+  perform set_config('look.enviando_briefing', 'sim', true);
+  update briefings set respostas = p_respostas, status = 'recebido', recebido_em = now() where id = v.id;
+  perform set_config('look.enviando_briefing', '', true);
+  update projetos set briefing = 'recebido' where id = v.projeto_id and briefing <> 'recebido';
+  select * into v_projeto from projetos where id = v.projeto_id;
+  select nome into v_cliente from clientes where id = v_projeto.cliente_id;
+
+  -- Avisa quem gerou o link e os administradores.
+  insert into avisos (usuario_id, texto, projeto_id)
+  select distinct pf.id, left('Briefing recebido: ' || coalesce(v_cliente || ' · ', '') || v_projeto.nome, 1000), v_projeto.id
+  from perfis pf
+  where pf.ativo and (pf.admin or pf.id = v.criado_por);
+end $$;
+
 alter table public.modulos     enable row level security;
 alter table public.perfis      enable row level security;
 alter table public.permissoes  enable row level security;
@@ -572,10 +688,11 @@ alter table public.tarefas     enable row level security;
 alter table public.comentarios enable row level security;
 alter table public.avisos      enable row level security;
 alter table public.anexos      enable row level security;
+alter table public.briefings   enable row level security;
 
 do $$ declare r record; begin
   for r in select policyname, tablename from pg_policies where schemaname = 'public'
-    and tablename in ('modulos','perfis','permissoes','clientes','projetos','tarefas','comentarios','avisos','ajustes','anexos')
+    and tablename in ('modulos','perfis','permissoes','clientes','projetos','tarefas','comentarios','avisos','ajustes','anexos','briefings')
   loop execute format('drop policy %I on public.%I', r.policyname, r.tablename); end loop;
 end $$;
 
@@ -662,6 +779,17 @@ create policy anexos_apagar on public.anexos for delete to authenticated
          and (public.pode('projetos', 'apagar')
               or (enviado_por = auth.uid() and public.pode('projetos', 'editar'))));
 
+-- Briefings: quem vê e edita projetos acompanha; quem edita gera o link e
+-- apaga um link que ainda não foi respondido. Ninguém da equipe muda as
+-- respostas: elas só chegam pelo link do cliente.
+create policy briefings_ler on public.briefings for select to authenticated
+  using (public.pode('projetos', 'ver') and exists (select 1 from public.projetos p where p.id = projeto_id));
+create policy briefings_criar on public.briefings for insert to authenticated
+  with check (public.pode('projetos', 'editar') and exists (select 1 from public.projetos p where p.id = projeto_id));
+create policy briefings_apagar on public.briefings for delete to authenticated
+  using (public.pode('projetos', 'editar') and exists (select 1 from public.projetos p where p.id = projeto_id)
+         and (status = 'aguardando' or public.pode('projetos', 'apagar')));
+
 -- Os arquivos em si (Storage) seguem a tabela de anexos: só se lê o arquivo
 -- cujo anexo a pessoa vê; só se envia para um caminho que ela mesma acabou
 -- de registrar; só se apaga o que ela pode apagar. Ninguém substitui arquivo.
@@ -696,3 +824,11 @@ revoke execute on function public.hash_senha_acesso(text) from authenticated;
 -- do GitHub que impede o Supabase grátis de pausar o banco por falta de uso.
 create or replace function public.ping() returns text language sql stable as $$ select 'ok'::text $$;
 grant execute on function public.ping() to anon;
+-- Cliente respondendo o briefing pelo link (sem login).
+grant execute on function public.briefing_abrir(text) to anon;
+grant execute on function public.briefing_enviar(text, jsonb) to anon;
+-- Funções internas dos gatilhos ficam fechadas.
+revoke execute on function public.preparar_briefing() from authenticated;
+
+-- Avisa a API do Supabase para reler a estrutura (colunas e funções novas).
+notify pgrst, 'reload schema';

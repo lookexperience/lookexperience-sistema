@@ -426,6 +426,59 @@ select teste.ok((select responsaveis = array['00000000-0000-0000-0000-0000000000
 select teste.ok((select count(*) = 0 from avisos), 'A cópia não gera avisos repetidos');
 set role authenticated;
 
+-- ---------------------------------------------------------------------
+-- BRIEFING DO CLIENTE (link sem login)
+-- ---------------------------------------------------------------------
+reset role;
+delete from avisos;
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.ok((select bool_and(briefing = 'dispensado') from projetos), 'Projetos que já existiam não pedem briefing');
+select teste.ok(teste.linhas($$insert into projetos (id, cliente_id, nome, briefing) values ('20000000-0000-0000-0000-0000000000b1', '10000000-0000-0000-0000-000000000001', 'Site novo', 'aguardando')$$) = 1, 'Admin cria projeto aguardando briefing');
+select teste.ok(teste.linhas($$insert into tarefas (titulo, setor, projeto_id) values ('Criar layout', 'criacao', '20000000-0000-0000-0000-0000000000b1')$$) = 1, 'Projeto aguardando briefing aceita tarefas (só alerta, não trava)');
+
+insert into briefings (id, projeto_id, modelo, titulo, perguntas, token, status, respostas)
+  values ('40000000-0000-0000-0000-0000000000b1', '20000000-0000-0000-0000-0000000000b1', 'marca', 'Briefing de marca', '{"secoes": []}', 'aaaa', 'recebido', '{"s1p1": "falso"}');
+select teste.ok((select token ~ '^[0-9a-f]{64}$' and token <> 'aaaa' from briefings where id = '40000000-0000-0000-0000-0000000000b1'), 'O banco sorteia o link do briefing (não aceita um escolhido)');
+select teste.ok((select status = 'aguardando' and respostas is null from briefings where id = '40000000-0000-0000-0000-0000000000b1'), 'Briefing nasce aguardando e sem respostas');
+select teste.ok(teste.linhas($$update briefings set respostas = '{"s1p1": "mudei"}' where id = '40000000-0000-0000-0000-0000000000b1'$$) <= 0, 'Ataque: equipe não muda respostas do briefing');
+select teste.ok(teste.linhas($$update briefings set token = repeat('a', 64) where id = '40000000-0000-0000-0000-0000000000b1'$$) <= 0, 'Ataque: equipe não troca o link do briefing');
+
+select teste.como('00000000-0000-0000-0000-0000000000cc');
+select teste.ok((select count(*) = 0 from briefings), 'Freelancer não vê briefings');
+select teste.ok(teste.linhas($$insert into briefings (projeto_id, modelo, titulo, perguntas) values ('20000000-0000-0000-0000-0000000000b1', 'marca', 'x', '{}')$$) = -1, 'Freelancer não gera link de briefing');
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok((select count(*) = 1 from briefings where id = '40000000-0000-0000-0000-0000000000b1'), 'Gerente (vê projetos) acompanha o briefing');
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+
+-- Cliente (visitante sem login) com o link
+reset role;
+create temp table link as select token from briefings where id = '40000000-0000-0000-0000-0000000000b1';
+grant select on link to anon;
+set role anon;
+select teste.como(null);
+select teste.ok(teste.linhas($$select * from briefings$$) = -1, 'Ataque: visitante não lê a tabela de briefings');
+select teste.ok((select public.briefing_abrir((select token from link)) ->> 'cliente' = 'Lotus Games'), 'Cliente abre o briefing pelo link');
+select teste.ok((select public.briefing_abrir(repeat('0', 64)) is null), 'Link errado não abre nada');
+select teste.ok((select public.briefing_abrir('x'' or 1=1 --') is null), 'Ataque: link com código não abre nada');
+select teste.ok(teste.linhas($$select public.briefing_enviar((select token from link), '{"s1p1": {"x": 1}}'::jsonb)$$) = -1, 'Ataque: resposta que não é texto é recusada');
+select teste.ok(teste.linhas($$select public.briefing_enviar((select token from link), jsonb_build_object('s1p1', repeat('a', 10001)))$$) = -1, 'Ataque: resposta gigante é recusada');
+select teste.ok(teste.linhas($$select public.briefing_enviar((select token from link), '{"<script>": "x"}'::jsonb)$$) = -1, 'Ataque: nome de pergunta inventado é recusado');
+select teste.ok(teste.linhas($$select public.briefing_enviar(repeat('0', 64), '{"s1p1": "x"}'::jsonb)$$) = -1, 'Link errado não envia nada');
+select teste.ok(teste.linhas($$select public.briefing_enviar((select token from link), '{"s1p1": "Lotus Games", "s1p2": ["Instagram", "Site"], "s2p1": "<img src=x onerror=alert(1)>"}'::jsonb)$$) = 1, 'Cliente envia o briefing pelo link');
+select teste.ok(teste.linhas($$select public.briefing_enviar((select token from link), '{"s1p1": "de novo"}'::jsonb)$$) = -1, 'Briefing já enviado não é sobrescrito');
+select teste.ok((select public.briefing_abrir((select token from link)) ->> 'status' = 'recebido' and public.briefing_abrir((select token from link)) -> 'perguntas' = 'null'::jsonb), 'Depois de enviado, o link só diz que foi recebido');
+reset role;
+select teste.ok((select respostas ->> 's1p1' = 'Lotus Games' and recebido_em is not null from briefings where id = '40000000-0000-0000-0000-0000000000b1'), 'Respostas ficam guardadas no briefing');
+select teste.ok((select briefing = 'recebido' from projetos where id = '20000000-0000-0000-0000-0000000000b1'), 'Projeto passa para "briefing recebido"');
+select teste.ok((select count(*) >= 1 from avisos where usuario_id = '00000000-0000-0000-0000-0000000000aa' and texto = 'Briefing recebido: Lotus Games · Site novo' and projeto_id = '20000000-0000-0000-0000-0000000000b1'), 'Admin recebe aviso do briefing');
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok(teste.linhas($$delete from briefings where id = '40000000-0000-0000-0000-0000000000b1'$$) = 0, 'Gerente (sem apagar projetos) não apaga briefing já respondido');
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.ok(teste.linhas($$insert into briefings (projeto_id, modelo, titulo, perguntas) values ('20000000-0000-0000-0000-0000000000b1', 'marca', 'x', to_jsonb(repeat('a', 300000)))$$) = -1, 'Ataque: modelo de briefing gigante é recusado');
+
 -- Visitante sem login chamando as funções do banco direto pela API
 reset role;
 set role anon;

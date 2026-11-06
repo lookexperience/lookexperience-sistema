@@ -148,6 +148,103 @@ await teste('Admin: cria projeto de dentro da ficha do cliente', async () => {
   await fecharModal();
 });
 
+// ---------- Briefing do cliente ----------
+let linkDoBriefing = '';
+const cliente = await contexto.newPage();
+cliente.on('pageerror', (e) => errosDaPagina.push(e.message));
+cliente.on('console', (m) => { if (m.type() === 'error') errosDaPagina.push(m.text()); });
+cliente.setDefaultTimeout(5000);
+
+await teste('Projeto novo de cliente começa com "Briefing pendente"', async () => {
+  await ir('projetos');
+  confere((await p.locator('tr[data-id]', { hasText: 'Cardápio novo' }).textContent()).includes('Briefing pendente'), 'sem o alerta na lista');
+  confere(!(await p.locator('tr[data-id=p-lotus]').textContent()).includes('Briefing pendente'), 'projeto antigo ficou pendente');
+});
+
+await teste('Admin: gera link de briefing na janela do projeto', async () => {
+  await p.click('tr[data-id]:has-text("Cardápio novo")');
+  await p.waitForSelector('#gerar-briefing');
+  confere((await p.locator('.briefings .alerta-briefing').textContent()).includes('ainda não tem o briefing'), 'sem alerta no projeto');
+  await p.selectOption('#modelo-briefing', 'marca');
+  await p.click('#gerar-briefing');
+  await p.waitForSelector('.briefing-item .link-briefing');
+  linkDoBriefing = await p.locator('.briefing-item .link-briefing').inputValue();
+  confere(/\/briefing\.html#[0-9a-f]{64}$/.test(linkDoBriefing), `link estranho: ${linkDoBriefing}`);
+  confere((await p.locator('.briefings .alerta-briefing').textContent()).includes('ainda não respondeu'), 'alerta não mudou');
+  await fecharModal();
+});
+
+await teste('Cliente: abre o link e vê o briefing com o nome dele', async () => {
+  await cliente.goto(linkDoBriefing);
+  await cliente.waitForSelector('#form-briefing');
+  confere((await cliente.textContent('h1')).includes('Briefing de marca'), 'título');
+  igual((await cliente.textContent('.sobre')).trim(), 'Padaria Teste', 'cliente');
+  confere(await cliente.locator('.secao').count() > 5, 'seções não apareceram');
+});
+
+await teste('Cliente: sem as respostas obrigatórias o briefing não é enviado', async () => {
+  await cliente.click('#enviar-briefing'); await cliente.waitForTimeout(150);
+  confere((await cliente.textContent('#erro-briefing')).includes('obrigatória'), 'sem aviso');
+  igual(await cliente.locator('.questao.faltando').count(), 3, 'perguntas marcadas');
+});
+
+await teste('Cliente: o que já foi digitado continua lá ao abrir de novo', async () => {
+  await cliente.fill('[name=s1p1]', 'Padaria do Bairro');
+  await cliente.reload(); await cliente.waitForSelector('#form-briefing');
+  igual(await cliente.inputValue('[name=s1p1]'), 'Padaria do Bairro', 'rascunho');
+});
+
+await teste('Cliente: preenche e envia o briefing', async () => {
+  await cliente.fill('[name=s1p2]', 'Dona Rosa');
+  await cliente.fill('[name=s1p3]', 'rosa@padaria.com · (14) 99999-0000');
+  await cliente.check('[name=s1p7][value="Marca nova"]');
+  await cliente.fill('[name=s2p1]', '<img src=x onerror="window.__xssBriefing=1">Pão quentinho');
+  await cliente.click('#enviar-briefing');
+  await cliente.waitForSelector('h1:has-text("Briefing enviado")');
+});
+
+await teste('Cliente: link já respondido não abre o formulário de novo', async () => {
+  await cliente.reload(); await cliente.waitForTimeout(300);
+  confere((await cliente.textContent('h1')).includes('já enviado'), 'formulário abriu de novo');
+});
+
+await teste('Cliente: link incompleto mostra explicação', async () => {
+  await cliente.goto(`${BASE}briefing.html#abc123`); await cliente.waitForTimeout(300);
+  confere((await cliente.textContent('h1')).includes('Link incompleto'), 'sem explicação');
+});
+
+await teste('Admin: recebe aviso, o projeto sai de pendente e as respostas aparecem', async () => {
+  await p.reload(); await ir('projetos');
+  confere(!(await p.locator('tr[data-id]', { hasText: 'Cardápio novo' }).textContent()).includes('Briefing pendente'), 'continua pendente');
+  await p.click('#abrir-avisos');
+  await p.click('.caixa-avisos .aviso:has-text("Briefing recebido: Padaria Teste · Cardápio novo")');
+  await p.waitForSelector('[data-ver-respostas]');
+  await p.click('[data-ver-respostas]'); await p.waitForTimeout(150);
+  const texto = await p.locator('.respostas-briefing').textContent();
+  confere(texto.includes('Dona Rosa') && texto.includes('Marca nova'), 'respostas não aparecem');
+  confere(texto.includes('<img src=x'), 'código do cliente não aparece como texto');
+  confere(!(await p.evaluate(() => window.__xssBriefing)), 'código do cliente rodou');
+  await fecharModal(); await fecharModal();
+});
+
+await teste('Projeto com briefing pendente mostra alerta no cartão e na tarefa (sem travar)', async () => {
+  await ir('projetos');
+  await p.click('tr[data-id=p-lotus]');
+  await p.selectOption('[name=briefing]', 'aguardando');
+  await p.click('#salvar'); await p.waitForTimeout(250);
+  await ir('atividades');
+  confere(await p.locator('.cartao:has-text("Editar 3 reels") .briefing-pendente').count(), 'cartão sem alerta');
+  await p.click('.cartao:has-text("Editar 3 reels")');
+  confere(await p.locator('#alerta-briefing').count(), 'tarefa sem alerta');
+  await p.fill('[name=titulo]', 'Editar 3 reels de lançamento');
+  await p.click('#salvar-tarefa'); await p.waitForTimeout(200);
+  confere(!(await p.locator('.modal').count()), 'tarefa não salvou');
+  await ir('projetos');
+  await p.click('tr[data-id=p-lotus]');
+  await p.selectOption('[name=briefing]', 'dispensado');
+  await p.click('#salvar'); await p.waitForTimeout(250);
+});
+
 await teste('Admin: tarefa com cliente exige escolher um projeto', async () => {
   await ir('atividades');
   await p.click('#nova');
