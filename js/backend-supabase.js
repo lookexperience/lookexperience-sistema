@@ -32,6 +32,9 @@ function traduzirErro(msg) {
   if (/anexos_tipo/i.test(msg)) return 'Esse tipo de arquivo não é aceito: só imagens, PDF, Word, PowerPoint e Excel.';
   if (/anexos_tamanhos/i.test(msg)) return 'Arquivo grande demais: o limite é 20 MB.';
   if (/briefings_tamanhos/i.test(msg)) return 'Briefing grande demais.';
+  if (/lancamentos_valor/i.test(msg)) return 'O valor precisa ser maior que zero.';
+  if (/lancamentos_tamanhos/i.test(msg)) return 'Preencha a descrição (até 200 letras).';
+  if (/lancamentos_data/i.test(msg)) return 'Confira a data.';
   if (/Failed to fetch|NetworkError/i.test(msg)) return 'Sem conexão com o servidor. Confira a internet e tente de novo.';
   return msg;
 }

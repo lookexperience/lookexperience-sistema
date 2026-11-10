@@ -94,7 +94,22 @@ function semente() {
   const avisos = [
     { id: novoId(), usuario_id: pablo, texto: 'Marina Exemplo marcou você em: Fechar cor do nome e acabamento da medalha', tarefa_id: tarefas[2].id, lido: false, criado_em: agora },
   ];
-  return { perfis, permissoes, clientes, projetos, tarefas, comentarios, avisos, anexos: [], briefings: [] };
+  const mes = diaRelativo(0).slice(0, 8);
+  const l = (dono_id, escopo, tipo, descricao, valor, dia, extra = {}) => ({
+    id: novoId(), dono_id, escopo, tipo, descricao, valor, data: `${mes}${String(dia).padStart(2, '0')}`, categoria: '', pago: true,
+    cliente_id: null, projeto_id: null, observacoes: '', criado_em: agora, atualizado_em: agora, ...extra });
+  const lancamentos = [
+    l(pablo, 'pessoal', 'entrada', 'Pró-labore', 3500, 5, { categoria: 'Salário / pró-labore' }),
+    l(pablo, 'pessoal', 'saida', 'Aluguel', 1200, 5, { categoria: 'Moradia' }),
+    l(pablo, 'pessoal', 'saida', 'Mercado do mês', 640.5, 8, { categoria: 'Mercado' }),
+    l(pablo, 'pessoal', 'saida', 'Conta de luz', 180, 20, { categoria: 'Contas da casa', pago: false }),
+    l(marina, 'pessoal', 'saida', 'Academia', 99.9, 10, { categoria: 'Saúde' }),
+    l(pablo, 'empresa', 'entrada', 'Rebranding Lotus · 1ª parcela', 2500, 3, { categoria: 'Serviço de cliente', cliente_id: 'c-lotus', projeto_id: 'p-lotus' }),
+    l(pablo, 'empresa', 'entrada', 'Identidade Flambé · sinal', 1500, 25, { categoria: 'Serviço de cliente', cliente_id: 'c-flambe', projeto_id: 'p-flambe', pago: false }),
+    l(pablo, 'empresa', 'saida', 'Adobe Creative Cloud', 124, 2, { categoria: 'Ferramentas e assinaturas' }),
+    l(pablo, 'empresa', 'saida', 'Edição freelancer (reels)', 450, 12, { categoria: 'Freelancers', projeto_id: 'p-lotus', cliente_id: 'c-lotus' }),
+  ];
+  return { perfis, permissoes, clientes, projetos, tarefas, comentarios, avisos, anexos: [], briefings: [], lancamentos };
 }
 
 export async function iniciar() {
@@ -104,7 +119,7 @@ export async function iniciar() {
   } catch { /* sem armazenamento */ }
   for (const t of banco?.tarefas ?? []) t.responsaveis ??= t.responsavel_id ? [t.responsavel_id] : [];
   for (const p of banco?.projetos ?? []) p.briefing ??= 'dispensado';
-  if (banco) banco.briefings ??= [];
+  if (banco) { banco.briefings ??= []; banco.lancamentos ??= []; }
   if (!banco) { banco = semente(); usuarioAtual = 'u-pablo'; salvar(); }
 }
 
@@ -146,6 +161,8 @@ function visivel(tabela, linha, s) {
     case 'avisos': return linha.usuario_id === eu;
     case 'anexos': return banco.projetos.some((p) => p.id === linha.projeto_id && visivel('projetos', p, s));
     case 'briefings': return pode(s, 'projetos', 'ver') && banco.projetos.some((p) => p.id === linha.projeto_id && visivel('projetos', p, s));
+    // Pessoal: só o dono, nem o admin. Empresa: permissão "financeiro".
+    case 'lancamentos': return linha.escopo === 'pessoal' ? linha.dono_id === eu && s.perfil.ativo : pode(s, 'financeiro', 'ver');
     default: return false;
   }
 }
@@ -163,6 +180,18 @@ function arrumarResponsaveis(alvo, lista) {
   if (limpa.some((id) => !banco.perfis.some((p) => p.id === id))) throw new Error('Responsável não encontrado na equipe.');
   alvo.responsaveis = limpa;
   alvo.responsavel_id = limpa[0] ?? null;
+}
+
+// Mesmos limites do banco para os lançamentos de finanças.
+function conferirLancamento(l, s) {
+  if (!['pessoal', 'empresa'].includes(l.escopo) || !['entrada', 'saida'].includes(l.tipo)) throw new Error('Lançamento inválido.');
+  if (!(Number(l.valor) > 0) || Number(l.valor) >= 1e9) throw new Error('O valor precisa ser maior que zero.');
+  if (!String(l.descricao ?? '').trim() || l.descricao.length > 200) throw new Error('Preencha a descrição (até 200 letras).');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(l.data ?? '')) throw new Error('Confira a data.');
+  if (l.escopo === 'pessoal' && (l.cliente_id || l.projeto_id)) throw new Error('Lançamento pessoal não se liga a cliente nem a projeto.');
+  const cliente = l.cliente_id && banco.clientes.find((c) => c.id === l.cliente_id);
+  const projeto = l.projeto_id && banco.projetos.find((p) => p.id === l.projeto_id);
+  if ((l.cliente_id && !(cliente && visivel('clientes', cliente, s))) || (l.projeto_id && !(projeto && visivel('projetos', projeto, s)))) negar();
 }
 
 const novoToken = () => Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
@@ -200,6 +229,10 @@ export async function inserir(tabela, dados) {
     const projeto = banco.projetos.find((p) => p.id === linha.projeto_id);
     if (!projeto || !visivel('projetos', projeto, s) || !pode(s, 'projetos', 'editar')) negar();
     Object.assign(linha, { token: novoToken(), status: 'aguardando', respostas: null, recebido_em: null, criado_por: eu });
+  } else if (tabela === 'lancamentos') {
+    conferirLancamento(linha, s);
+    if (linha.escopo === 'pessoal' ? !s.perfil.ativo : !pode(s, 'financeiro', 'criar')) negar();
+    Object.assign(linha, { dono_id: eu, atualizado_em: linha.criado_em });
   } else negar();
   banco[tabela].push(linha);
   salvar();
@@ -237,6 +270,12 @@ export async function atualizar(tabela, id, mudancas) {
     if (perdeAdmin && !banco.perfis.some((p) => p.id !== id && p.admin && p.ativo)) {
       throw new Error('O sistema precisa de pelo menos um administrador ativo.');
     }
+  } else if (tabela === 'lancamentos') {
+    if (linha.escopo === 'empresa' && !pode(s, 'financeiro', 'editar')) negar();
+    // Igual ao banco: dono e aba (pessoal/empresa) nunca mudam.
+    const { dono_id: _d, escopo: _e, criado_em: _c, ...resto } = mudancas;
+    mudancas = { ...resto, atualizado_em: new Date().toISOString() };
+    conferirLancamento({ ...linha, ...mudancas }, s);
   } else if (tabela !== 'avisos') negar();
   Object.assign(linha, mudancas);
   salvar();
@@ -252,6 +291,7 @@ export async function apagar(tabela, id) {
     clientes: () => pode(s, 'clientes', 'apagar'),
     projetos: () => pode(s, 'projetos', 'apagar'),
     briefings: () => pode(s, 'projetos', 'editar') && (linha.status === 'aguardando' || pode(s, 'projetos', 'apagar')),
+    lancamentos: () => linha.escopo === 'pessoal' || pode(s, 'financeiro', 'apagar'),
     comentarios: () => linha.autor_id === s.perfil.id || s.perfil.admin,
     avisos: () => true,
     perfis: () => s.perfil.admin && id !== s.perfil.id,

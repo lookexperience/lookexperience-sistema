@@ -34,7 +34,7 @@ insert into public.modulos (chave, nome, fase, ordem) values
   ('execucao',     'Execução',             3, 70),
   ('materiais',    'Banco de materiais',   3, 75),
   ('equipamentos', 'Equipamentos',         3, 76),
-  ('financeiro',   'Financeiro',           4, 80),
+  ('financeiro',   'Financeiro da empresa', 1, 80),
   ('horas',        'Registro de horas',    4, 85)
 on conflict (chave) do update set nome = excluded.nome, fase = excluded.fase, ordem = excluded.ordem;
 
@@ -240,6 +240,40 @@ select pg_temp.limite('briefings', 'briefings_tamanhos', $c$char_length(modelo) 
   and (respostas is null or (jsonb_typeof(respostas) = 'object' and pg_column_size(respostas) <= 200000))$c$);
 select pg_temp.limite('briefings', 'briefings_status', $c$status in ('aguardando', 'recebido')$c$);
 select pg_temp.limite('briefings', 'briefings_token', $c$token ~ '^[0-9a-f]{64}$'$c$);
+
+-- ---------------------------------------------------------------------
+-- Finanças (desde a versão 0.7.0). Cada lançamento é uma entrada ou uma
+-- saída de dinheiro.
+--  * "pessoal": as contas de cada pessoa. Só o dono vê, nem o administrador.
+--  * "empresa": o caixa da LOOK. Só quem tem a permissão "Financeiro da
+--    empresa" vê (o administrador sempre vê).
+-- "pago" falso = ainda vai entrar (a receber) ou sair (a pagar).
+-- ---------------------------------------------------------------------
+create table if not exists public.lancamentos (
+  id            uuid primary key default gen_random_uuid(),
+  escopo        text not null,
+  dono_id       uuid not null references public.perfis(id) on delete cascade default auth.uid(),
+  tipo          text not null,
+  descricao     text not null,
+  categoria     text not null default '',
+  valor         numeric(14,2) not null,
+  data          date not null default current_date,
+  pago          boolean not null default true,
+  cliente_id    uuid references public.clientes(id) on delete set null,
+  projeto_id    uuid references public.projetos(id) on delete set null,
+  observacoes   text not null default '',
+  criado_em     timestamptz not null default now(),
+  atualizado_em timestamptz not null default now()
+);
+create index if not exists lancamentos_dono_idx on public.lancamentos (escopo, dono_id, data);
+
+select pg_temp.limite('lancamentos', 'lancamentos_escopo', $c$escopo in ('pessoal', 'empresa')$c$);
+select pg_temp.limite('lancamentos', 'lancamentos_tipo', $c$tipo in ('entrada', 'saida')$c$);
+select pg_temp.limite('lancamentos', 'lancamentos_valor', 'valor > 0 and valor < 1000000000');
+select pg_temp.limite('lancamentos', 'lancamentos_tamanhos', 'char_length(btrim(descricao)) between 1 and 200 and char_length(categoria) <= 60 and char_length(observacoes) <= 2000');
+select pg_temp.limite('lancamentos', 'lancamentos_data', $c$data between date '2000-01-01' and date '2100-12-31'$c$);
+-- Conta pessoal não se liga a cliente nem a projeto da empresa.
+select pg_temp.limite('lancamentos', 'lancamentos_pessoal', $c$escopo = 'empresa' or (cliente_id is null and projeto_id is null)$c$);
 
 -- ---------------------------------------------------------------------
 -- Funções de permissão (usadas pelas políticas abaixo).
@@ -679,6 +713,27 @@ begin
   where pf.ativo and (pf.admin or pf.id = v.criado_por);
 end $$;
 
+-- Lançamento: o dono é sempre quem cria; depois, ninguém troca o dono nem
+-- passa um lançamento de pessoal para empresa (ou o contrário).
+create or replace function public.preparar_lancamento() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    if auth.uid() is not null then new.dono_id := auth.uid(); end if;
+    new.criado_em := now();
+  else
+    new.dono_id := old.dono_id;
+    new.escopo := old.escopo;
+    new.criado_em := old.criado_em;
+  end if;
+  new.atualizado_em := now();
+  return new;
+end $$;
+
+drop trigger if exists preparar_lancamento on public.lancamentos;
+create trigger preparar_lancamento before insert or update on public.lancamentos
+  for each row execute function public.preparar_lancamento();
+
 alter table public.modulos     enable row level security;
 alter table public.perfis      enable row level security;
 alter table public.permissoes  enable row level security;
@@ -689,10 +744,11 @@ alter table public.comentarios enable row level security;
 alter table public.avisos      enable row level security;
 alter table public.anexos      enable row level security;
 alter table public.briefings   enable row level security;
+alter table public.lancamentos enable row level security;
 
 do $$ declare r record; begin
   for r in select policyname, tablename from pg_policies where schemaname = 'public'
-    and tablename in ('modulos','perfis','permissoes','clientes','projetos','tarefas','comentarios','avisos','ajustes','anexos','briefings')
+    and tablename in ('modulos','perfis','permissoes','clientes','projetos','tarefas','comentarios','avisos','ajustes','anexos','briefings','lancamentos')
   loop execute format('drop policy %I on public.%I', r.policyname, r.tablename); end loop;
 end $$;
 
@@ -790,6 +846,28 @@ create policy briefings_apagar on public.briefings for delete to authenticated
   using (public.pode('projetos', 'editar') and exists (select 1 from public.projetos p where p.id = projeto_id)
          and (status = 'aguardando' or public.pode('projetos', 'apagar')));
 
+-- Finanças. Pessoal: só o próprio dono (conta ativa) vê e mexe, nem o
+-- administrador enxerga. Empresa: segue a permissão "financeiro"; cliente e
+-- projeto ligados precisam ser os que a pessoa já enxerga.
+create policy lancamentos_ler on public.lancamentos for select to authenticated
+  using ((escopo = 'pessoal' and dono_id = auth.uid() and public.esta_ativo())
+         or (escopo = 'empresa' and public.pode('financeiro', 'ver')));
+create policy lancamentos_criar on public.lancamentos for insert to authenticated
+  with check ((escopo = 'pessoal' and dono_id = auth.uid() and public.esta_ativo())
+              or (escopo = 'empresa' and public.pode('financeiro', 'criar')
+                  and (cliente_id is null or exists (select 1 from public.clientes c where c.id = cliente_id))
+                  and (projeto_id is null or exists (select 1 from public.projetos p where p.id = projeto_id))));
+create policy lancamentos_editar on public.lancamentos for update to authenticated
+  using ((escopo = 'pessoal' and dono_id = auth.uid() and public.esta_ativo())
+         or (escopo = 'empresa' and public.pode('financeiro', 'editar')))
+  with check ((escopo = 'pessoal' and dono_id = auth.uid() and public.esta_ativo())
+              or (escopo = 'empresa' and public.pode('financeiro', 'editar')
+                  and (cliente_id is null or exists (select 1 from public.clientes c where c.id = cliente_id))
+                  and (projeto_id is null or exists (select 1 from public.projetos p where p.id = projeto_id))));
+create policy lancamentos_apagar on public.lancamentos for delete to authenticated
+  using ((escopo = 'pessoal' and dono_id = auth.uid() and public.esta_ativo())
+         or (escopo = 'empresa' and public.pode('financeiro', 'apagar')));
+
 -- Os arquivos em si (Storage) seguem a tabela de anexos: só se lê o arquivo
 -- cujo anexo a pessoa vê; só se envia para um caminho que ela mesma acabou
 -- de registrar; só se apaga o que ela pode apagar. Ninguém substitui arquivo.
@@ -829,6 +907,7 @@ grant execute on function public.briefing_abrir(text) to anon;
 grant execute on function public.briefing_enviar(text, jsonb) to anon;
 -- Funções internas dos gatilhos ficam fechadas.
 revoke execute on function public.preparar_briefing() from authenticated;
+revoke execute on function public.preparar_lancamento() from authenticated;
 
 -- Avisa a API do Supabase para reler a estrutura (colunas e funções novas).
 notify pgrst, 'reload schema';

@@ -2,6 +2,18 @@
 // entrada no topo desta lista; a tela "Sobre o sistema" mostra tudo.
 export const HISTORICO = [
   {
+    versao: '0.7.0',
+    data: '2026-11-10',
+    titulo: 'Finanças: pessoal e da empresa',
+    itens: [
+      'Nova tela "Finanças" no menu, com entradas, saídas, saldo do mês, saldo acumulado e gastos por categoria',
+      'Aba "Pessoal": cada pessoa lança as próprias contas; só ela vê, nem o administrador',
+      'Aba "Empresa": o caixa da LOOK, que só aparece para quem tem a permissão "Financeiro da empresa" (Equipe e acessos)',
+      'Cada lançamento pode ficar "a receber" ou "a pagar" até ser marcado como pago, e no caixa da empresa pode ser ligado a um cliente e a um projeto',
+      'Dá para navegar pelos meses com as setas ‹ ›',
+    ],
+  },
+  {
     versao: '0.6.0',
     data: '2026-11-06',
     titulo: 'Briefing do cliente',

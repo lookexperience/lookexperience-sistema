@@ -53,6 +53,13 @@ A chave pública pode ficar no código. Quem protege os dados são as regras do 
 - Projeto novo de cliente começa com **Briefing pendente**. Isso aparece como alerta (lista de projetos, cartões e tarefas), mas não trava nada. No campo "Briefing do cliente" do projeto dá para marcar "Recebido" ou "Não precisa".
 - As perguntas ficam em `js/briefing-modelos.js`. Cada briefing guarda a própria cópia das perguntas, então mudar o modelo não mexe nos que já foram enviados.
 
+## Finanças
+
+- Tela **Finanças** no menu. Cada lançamento é uma entrada ou uma saída, com valor, data, categoria e se já foi pago.
+- **Pessoal**: todo mundo da equipe tem a sua. Só o dono vê e mexe, nem o administrador do sistema (a regra está no banco). Atenção: quem abre o painel do Supabase como dono do projeto enxerga tudo, então a senha do Supabase continua sendo só do PABLO.
+- **Empresa**: o caixa da LOOK. Aparece só para quem tem a permissão **Financeiro da empresa** em Equipe e acessos (ver, criar, editar e apagar separados). O administrador sempre vê.
+- Lançamento "a receber" ou "a pagar" (desmarcado em "Já recebi" ou "Já paguei") não entra no saldo até ser marcado.
+
 ## Como fazer atualizações
 
 Toda mudança é feita no código, e só vai pro ar com os testes de `testes/` passando:
