@@ -12,6 +12,9 @@ export const MODO_DEMO = !CONFIG.supabaseUrl
   || ['localhost', '127.0.0.1'].includes(location.hostname)
   || new URLSearchParams(location.search).has('demo');
 
+// Onde a LOOK emite as notas fiscais de serviço (NFS-e): o Emissor Nacional do gov.br.
+export const LINK_EMISSOR_NF = 'https://www.nfse.gov.br/EmissorNacional';
+
 export const SETORES = [
   { chave: 'comercial', nome: 'Comercial' },
   { chave: 'criacao', nome: 'Criação' },

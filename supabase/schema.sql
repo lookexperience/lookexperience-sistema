@@ -275,6 +275,22 @@ select pg_temp.limite('lancamentos', 'lancamentos_data', $c$data between date '2
 -- Conta pessoal não se liga a cliente nem a projeto da empresa.
 select pg_temp.limite('lancamentos', 'lancamentos_pessoal', $c$escopo = 'empresa' or (cliente_id is null and projeto_id is null)$c$);
 
+-- Nota fiscal do lançamento da empresa: o número e o arquivo (PDF ou foto,
+-- até 5 MB). A nota é emitida no Emissor Nacional (nfse.gov.br); aqui fica
+-- só o registro. O arquivo vai para o depósito privado "notas", na pasta do
+-- próprio lançamento, com nome sorteado.
+alter table public.lancamentos add column if not exists nf_numero text not null default '';
+alter table public.lancamentos add column if not exists nf_caminho text;
+alter table public.lancamentos add column if not exists nf_nome text not null default '';
+select pg_temp.limite('lancamentos', 'lancamentos_nf', $c$char_length(nf_numero) <= 60 and char_length(nf_nome) <= 255
+  and (nf_caminho is null or (escopo = 'empresa' and nf_caminho ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}\.(pdf|jpg|png)$'
+       and split_part(nf_caminho, '/', 1) = id::text))$c$);
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('notas', 'notas', false, 5242880, array['application/pdf', 'image/jpeg', 'image/png'])
+on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
 -- ---------------------------------------------------------------------
 -- Funções de permissão (usadas pelas políticas abaixo).
 -- "security definer" deixa a função ler perfis/permissões sem cair
@@ -884,6 +900,23 @@ create policy anexos_arquivo_apagar on storage.objects for delete to authenticat
     select 1 from public.anexos a join public.projetos p on p.id = a.projeto_id
     where a.caminho = name and (public.pode('projetos', 'apagar')
       or (a.enviado_por = auth.uid() and public.pode('projetos', 'editar')))));
+
+-- Arquivos das notas fiscais (depósito "notas"): lê quem vê o lançamento;
+-- envia para o caminho já registrado no lançamento quem pode editar o caixa
+-- (ou quem acabou de criar o lançamento); apaga quem pode editar ou apagar.
+drop policy if exists notas_arquivo_ler on storage.objects;
+drop policy if exists notas_arquivo_enviar on storage.objects;
+drop policy if exists notas_arquivo_apagar on storage.objects;
+create policy notas_arquivo_ler on storage.objects for select to authenticated
+  using (bucket_id = 'notas' and exists (select 1 from public.lancamentos l where l.nf_caminho = name));
+create policy notas_arquivo_enviar on storage.objects for insert to authenticated
+  with check (bucket_id = 'notas' and exists (
+    select 1 from public.lancamentos l where l.nf_caminho = name and l.escopo = 'empresa'
+      and (public.pode('financeiro', 'editar') or (l.dono_id = auth.uid() and public.pode('financeiro', 'criar')))));
+create policy notas_arquivo_apagar on storage.objects for delete to authenticated
+  using (bucket_id = 'notas' and exists (
+    select 1 from public.lancamentos l where l.nf_caminho = name
+      and (public.pode('financeiro', 'editar') or public.pode('financeiro', 'apagar'))));
 
 -- ---------------------------------------------------------------------
 -- Visitante sem login (papel "anon" do Supabase) não toca em nada:

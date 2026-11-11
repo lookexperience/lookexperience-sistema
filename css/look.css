@@ -364,3 +364,12 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
   .tabela.lancamentos th:nth-child(3), .tabela.lancamentos td:nth-child(3) { display: none; }
   .tabela.lancamentos td { padding: 10px 6px; }
 }
+.etiquetas-lancamento { white-space: nowrap; }
+.etiquetas-lancamento .etiqueta + .etiqueta { margin-left: 4px; }
+.etiqueta.sem-nota { color: var(--texto-3); border-style: dashed; }
+.nota-fiscal .linha-nota { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.nota-fiscal .linha-nota input { flex: 1; min-width: 160px; }
+.nota-fiscal .arquivo-nota { display: flex; gap: 10px; align-items: center; margin: 8px 0; }
+.nota-fiscal .arquivo-nota a { color: var(--latao); }
+.nota-fiscal input[type=file] { margin-top: 8px; }
+a.botao { text-decoration: none; display: inline-flex; align-items: center; }

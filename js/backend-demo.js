@@ -109,7 +109,7 @@ function semente() {
     l(pablo, 'empresa', 'saida', 'Adobe Creative Cloud', 124, 2, { categoria: 'Ferramentas e assinaturas' }),
     l(pablo, 'empresa', 'saida', 'Edição freelancer (reels)', 450, 12, { categoria: 'Freelancers', projeto_id: 'p-lotus', cliente_id: 'c-lotus' }),
   ];
-  return { perfis, permissoes, clientes, projetos, tarefas, comentarios, avisos, anexos: [], briefings: [], lancamentos };
+  return { perfis, permissoes, clientes, projetos, tarefas, comentarios, avisos, anexos: [], briefings: [], lancamentos, notas: {} };
 }
 
 export async function iniciar() {
@@ -119,7 +119,7 @@ export async function iniciar() {
   } catch { /* sem armazenamento */ }
   for (const t of banco?.tarefas ?? []) t.responsaveis ??= t.responsavel_id ? [t.responsavel_id] : [];
   for (const p of banco?.projetos ?? []) p.briefing ??= 'dispensado';
-  if (banco) { banco.briefings ??= []; banco.lancamentos ??= []; }
+  if (banco) { banco.briefings ??= []; banco.lancamentos ??= []; banco.notas ??= {}; }
   if (!banco) { banco = semente(); usuarioAtual = 'u-pablo'; salvar(); }
 }
 
@@ -189,6 +189,10 @@ function conferirLancamento(l, s) {
   if (!String(l.descricao ?? '').trim() || l.descricao.length > 200) throw new Error('Preencha a descrição (até 200 letras).');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(l.data ?? '')) throw new Error('Confira a data.');
   if (l.escopo === 'pessoal' && (l.cliente_id || l.projeto_id)) throw new Error('Lançamento pessoal não se liga a cliente nem a projeto.');
+  if ((l.nf_numero ?? '').length > 60) throw new Error('Confira o número e o arquivo da nota fiscal.');
+  if (l.nf_caminho && (l.escopo !== 'empresa' || l.nf_caminho.split('/')[0] !== l.id || !/^[0-9a-f-]{36}\/[0-9a-f-]{36}\.(pdf|jpg|png)$/.test(l.nf_caminho))) {
+    throw new Error('Confira o número e o arquivo da nota fiscal.');
+  }
   const cliente = l.cliente_id && banco.clientes.find((c) => c.id === l.cliente_id);
   const projeto = l.projeto_id && banco.projetos.find((p) => p.id === l.projeto_id);
   if ((l.cliente_id && !(cliente && visivel('clientes', cliente, s))) || (l.projeto_id && !(projeto && visivel('projetos', projeto, s)))) negar();
@@ -305,6 +309,7 @@ export async function apagar(tabela, id) {
   if (tabela === 'projetos') banco.tarefas.forEach((t) => { if (t.projeto_id === id) t.projeto_id = null; });
   if (tabela === 'projetos') banco.anexos = (banco.anexos ?? []).filter((a) => a.projeto_id !== id);
   if (tabela === 'projetos') banco.briefings = (banco.briefings ?? []).filter((b) => b.projeto_id !== id);
+  if (tabela === 'lancamentos' && linha.nf_caminho) delete banco.notas[linha.nf_caminho];
   salvar();
 }
 
@@ -371,6 +376,37 @@ export async function apagarAnexo(anexo) {
   if (!linha || !visivel('anexos', linha, s)) negar();
   if (!(pode(s, 'projetos', 'apagar') || (linha.enviado_por === s.perfil.id && pode(s, 'projetos', 'editar')))) negar();
   banco.anexos = banco.anexos.filter((a) => a.id !== anexo.id);
+  salvar();
+}
+
+// ---------- Notas fiscais (na demonstração, o arquivo fica neste navegador) ----------
+export async function enviarArquivoNota(caminho, arquivo) {
+  const s = await sessao();
+  const l = banco.lancamentos.find((x) => x.nf_caminho === caminho);
+  if (!l || l.escopo !== 'empresa' || banco.notas[caminho]
+    || !(pode(s, 'financeiro', 'editar') || (l.dono_id === s.perfil.id && pode(s, 'financeiro', 'criar')))) negar();
+  if (arquivo.size > LIMITE_DEMO) throw new Error('Na demonstração o limite é 2 MB por arquivo (no sistema de verdade, 5 MB).');
+  banco.notas[caminho] = await new Promise((ok, falhar) => {
+    const leitor = new FileReader();
+    leitor.onload = () => ok(leitor.result);
+    leitor.onerror = () => falhar(new Error('Não deu para ler o arquivo.'));
+    leitor.readAsDataURL(arquivo);
+  });
+  salvar();
+}
+
+export async function linkNota(caminho) {
+  const s = await sessao();
+  const l = banco.lancamentos.find((x) => x.nf_caminho === caminho);
+  if (!l || !visivel('lancamentos', l, s) || !banco.notas[caminho]) return '';
+  return URL.createObjectURL(blobDe(banco.notas[caminho]));
+}
+
+export async function apagarArquivoNota(caminho) {
+  const s = await sessao();
+  const l = banco.lancamentos.find((x) => x.nf_caminho === caminho);
+  if (!l || !visivel('lancamentos', l, s) || !(pode(s, 'financeiro', 'editar') || pode(s, 'financeiro', 'apagar'))) negar();
+  delete banco.notas[caminho];
   salvar();
 }
 

@@ -825,6 +825,40 @@ await teste('Finanças: aba Empresa mostra o caixa da LOOK com cliente e projeto
   await p.screenshot({ path: join(CAPTURAS, 'financas-empresa.png') });
 });
 
+await teste('Finanças: caixa da empresa tem atalho para o Emissor Nacional e marca entrada sem nota', async () => {
+  igual(await p.getAttribute('#emitir-nf', 'href'), 'https://www.nfse.gov.br/EmissorNacional', 'link do emissor');
+  igual(await p.getAttribute('#emitir-nf', 'target'), '_blank', 'abre em aba nova');
+  confere(await p.locator('tr:has-text("Rebranding Lotus") .sem-nota').count(), 'entrada sem nota não marcada');
+  confere(!(await p.locator('tr:has-text("Adobe") .sem-nota').count()), 'saída marcada como sem nota');
+});
+
+await teste('Finanças: arquivo que não é PDF nem foto não vira nota', async () => {
+  await p.click('tr[data-id]:has-text("Rebranding Lotus")');
+  await p.setInputFiles('[name=nf_arquivo]', { name: 'nota.txt', mimeType: 'text/plain', buffer: Buffer.from('x') });
+  await p.click('#salvar-lancamento'); await p.waitForTimeout(150);
+  confere((await p.textContent('#erro-lancamento')).includes('PDF ou uma foto'), 'arquivo errado foi aceito');
+  await fecharModal();
+});
+
+await teste('Finanças: registra o número e o PDF da nota fiscal no lançamento', async () => {
+  await p.click('tr[data-id]:has-text("Rebranding Lotus")');
+  await p.fill('[name=nf_numero]', '2026/15');
+  await p.setInputFiles('[name=nf_arquivo]', { name: 'nota-lotus.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 nota') });
+  await p.click('#salvar-lancamento'); await p.waitForTimeout(250);
+  igual(await p.locator('.modal').count(), 0, 'janela não fechou');
+  confere((await p.textContent('tr:has-text("Rebranding Lotus")')).includes('NF 2026/15'), 'número da nota não aparece');
+  confere(!(await p.locator('tr:has-text("Rebranding Lotus") .sem-nota').count()), 'continua "Sem nota"');
+  await p.click('tr[data-id]:has-text("Rebranding Lotus")');
+  await p.waitForFunction(() => document.querySelector('#ver-nota')?.href.startsWith('blob:'));
+  igual((await p.textContent('#ver-nota')).trim(), 'nota-lotus.pdf', 'nome do arquivo');
+  await p.click('#tirar-nota'); await p.click('#tirar-nota'); await p.waitForTimeout(250);
+  await fecharModal();
+  await p.click('tr[data-id]:has-text("Rebranding Lotus")');
+  igual(await p.locator('#ver-nota').count(), 0, 'arquivo não saiu');
+  igual(await p.inputValue('[name=nf_numero]'), '2026/15', 'número sumiu junto com o arquivo');
+  await fecharModal();
+});
+
 await teste('Finanças: gerente sem permissão só vê a própria aba pessoal', async () => {
   await comoUsuario('u-marina');
   await ir('financas');

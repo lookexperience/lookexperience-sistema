@@ -51,3 +51,17 @@ export const rotuloTipo = (anexo) => (TIPOS_ANEXO[anexo.tipo] ?? 'arq').replace(
 
 export const novoIdAnexo = () => (crypto.randomUUID ? crypto.randomUUID()
   : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, (c) => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16)));
+
+// Arquivo da nota fiscal no lançamento da empresa: PDF ou foto, até 5 MB
+// (iguais ao depósito "notas" do banco).
+export const LIMITE_NOTA = 5 * 1024 * 1024;
+const TIPOS_NOTA = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png' };
+export const ACEITOS_NOTA = '.pdf,.jpg,.jpeg,.png';
+
+export function conferirNota(arquivo) {
+  const tipo = tipoDoArquivo(arquivo);
+  if (!TIPOS_NOTA[tipo]) throw new Error('A nota precisa ser um PDF ou uma foto (JPG ou PNG).');
+  if (arquivo.size > LIMITE_NOTA) throw new Error('O arquivo da nota passa de 5 MB.');
+  if (!arquivo.size) throw new Error('O arquivo da nota está vazio.');
+  return { tipo, ext: TIPOS_NOTA[tipo] };
+}

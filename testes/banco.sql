@@ -520,6 +520,31 @@ select teste.ok((select count(*) = 0 from lancamentos where escopo = 'pessoal'),
 select teste.como('00000000-0000-0000-0000-0000000000ee');
 select teste.ok(teste.linhas($$insert into lancamentos (escopo, tipo, descricao, valor) values ('pessoal', 'saida', 'x', 10)$$) = -1, 'Conta desativada não lança nada');
 
+-- Nota fiscal no lançamento da empresa
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.ok(teste.linhas($$update lancamentos set nf_numero = '2026/123', nf_nome = 'nota.pdf', nf_caminho = '50000000-0000-0000-0000-000000000003/c0000000-0000-0000-0000-000000000001.pdf' where id = '50000000-0000-0000-0000-000000000003'$$) = 1, 'Admin registra a nota fiscal no lançamento da empresa');
+select teste.ok(teste.linhas($$insert into storage.objects (bucket_id, name) values ('notas', '50000000-0000-0000-0000-000000000003/c0000000-0000-0000-0000-000000000001.pdf')$$) = 1, 'Admin envia o arquivo da nota');
+select teste.ok(teste.linhas($$insert into storage.objects (bucket_id, name) values ('notas', '50000000-0000-0000-0000-000000000003/c0000000-0000-0000-0000-000000000009.pdf')$$) = -1, 'Ataque: arquivo de nota sem registro no lançamento não é aceito');
+select teste.ok(teste.linhas($$update lancamentos set nf_caminho = '50000000-0000-0000-0000-000000000004/c0000000-0000-0000-0000-000000000002.pdf' where id = '50000000-0000-0000-0000-000000000003'$$) = -1, 'Ataque: nota não aponta para a pasta de outro lançamento');
+select teste.ok(teste.linhas($$update lancamentos set nf_caminho = '50000000-0000-0000-0000-000000000004/c0000000-0000-0000-0000-000000000002.pdf' where id = '50000000-0000-0000-0000-000000000004'$$) = -1, 'Lançamento pessoal não guarda arquivo de nota');
+select teste.ok(teste.linhas($$update lancamentos set nf_caminho = '50000000-0000-0000-0000-000000000003/c0000000-0000-0000-0000-000000000003.exe' where id = '50000000-0000-0000-0000-000000000003'$$) = -1, 'Ataque: nota só aceita PDF ou foto');
+
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok((select count(*) = 1 from storage.objects where bucket_id = 'notas'), 'Quem vê o caixa da empresa abre a nota');
+select teste.ok(teste.linhas($$delete from storage.objects where bucket_id = 'notas'$$) = 0, 'Só com "ver", não apaga a nota');
+
+select teste.como('00000000-0000-0000-0000-0000000000dd');
+select teste.ok((select count(*) = 0 from storage.objects where bucket_id = 'notas'), 'Sem permissão de finanças, não abre nenhuma nota');
+
+select teste.como('00000000-0000-0000-0000-0000000000cc');
+select teste.ok(teste.linhas($$insert into lancamentos (id, escopo, tipo, descricao, valor, nf_numero, nf_caminho) values ('50000000-0000-0000-0000-000000000005', 'empresa', 'entrada', 'Diária de gravação', 800, '45', '50000000-0000-0000-0000-000000000005/c0000000-0000-0000-0000-000000000005.png')$$) = 1, 'Quem pode criar lança a entrada já com a nota');
+select teste.ok(teste.linhas($$insert into storage.objects (bucket_id, name) values ('notas', '50000000-0000-0000-0000-000000000005/c0000000-0000-0000-0000-000000000005.png')$$) = 1, '...e envia o arquivo da nota que acabou de lançar');
+select teste.ok(teste.linhas($$insert into storage.objects (bucket_id, name) values ('notas', '50000000-0000-0000-0000-000000000003/c0000000-0000-0000-0000-000000000001.pdf')$$) = -1, 'Ataque: não substitui o arquivo de nota de outra pessoa');
+select teste.ok(teste.linhas($$delete from storage.objects where bucket_id = 'notas'$$) = 0, 'Sem editar nem apagar, não apaga nota');
+
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.ok(teste.linhas($$delete from storage.objects where name = '50000000-0000-0000-0000-000000000005/c0000000-0000-0000-0000-000000000005.png'$$) = 1, 'Admin apaga o arquivo da nota');
+
 select teste.como('00000000-0000-0000-0000-0000000000bb');
 select teste.ok(teste.linhas($$delete from lancamentos where id = '50000000-0000-0000-0000-000000000002'$$) = 1, 'Dono apaga o próprio lançamento pessoal');
 reset role;

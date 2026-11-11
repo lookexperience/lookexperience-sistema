@@ -4,6 +4,8 @@
 import { pode } from '../permissoes.js';
 import { esc, $, $$, avisar, hoje, nomeMes, paraData } from '../util.js';
 import { abrirModal } from './modal.js';
+import { LINK_EMISSOR_NF } from '../config.js';
+import { ACEITOS_NOTA, conferirNota, novoIdAnexo } from '../anexos.js';
 
 export const CATEGORIAS = {
   pessoal: {
@@ -80,13 +82,17 @@ export async function render(el, ctx) {
     return `<tr class="clicavel" data-id="${esc(l.id)}">
       <td class="fraco">${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}</td>
       <td><b>${esc(l.descricao)}</b>${extra ? `<div class="fraco">${extra}</div>` : ''}</td>
-      <td>${l.pago ? '' : `<span class="etiqueta pendente">${l.tipo === 'entrada' ? 'A receber' : 'A pagar'}</span>`}</td>
+      <td class="etiquetas-lancamento">${l.pago ? '' : `<span class="etiqueta pendente">${l.tipo === 'entrada' ? 'A receber' : 'A pagar'}</span>`}
+        ${empresa && l.nf_numero ? `<span class="etiqueta" title="Nota fiscal">NF ${esc(l.nf_numero)}</span>` : ''}
+        ${empresa && l.tipo === 'entrada' && !l.nf_numero ? '<span class="etiqueta sem-nota" title="Entrada sem nota fiscal registrada">Sem nota</span>' : ''}</td>
       <td class="valor-lancamento tipo-${l.tipo}">${l.tipo === 'entrada' ? '+' : '−'} ${dinheiro(l.valor)}</td></tr>`;
   }).join('');
 
   el.innerHTML = `
     <div class="cabecalho"><div><div class="sobre">Finanças</div><h1>${empresa ? 'Caixa da LOOK' : 'Minhas finanças'}</h1></div>
-      ${podeCriar ? '<div style="display:flex;gap:8px"><button class="botao" id="nova-saida">+ Saída</button><button class="botao primario" id="nova-entrada">+ Entrada</button></div>' : ''}</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${empresa ? `<a class="botao" id="emitir-nf" href="${LINK_EMISSOR_NF}" target="_blank" rel="noopener noreferrer" title="Abre o Emissor Nacional (gov.br) numa aba nova">Emitir nota fiscal ↗</a>` : ''}
+        ${podeCriar ? '<button class="botao" id="nova-saida">+ Saída</button><button class="botao primario" id="nova-entrada">+ Entrada</button>' : ''}</div></div>
     ${veEmpresa ? `<div class="abas"><button class="aba ${empresa ? '' : 'ativa'}" data-aba="pessoal">Pessoal</button><button class="aba ${empresa ? 'ativa' : ''}" data-aba="empresa">Empresa</button></div>` : ''}
     <p class="mudo aviso-financas">${empresa
       ? 'Só quem tem a permissão "Financeiro da empresa" vê esta aba.'
@@ -150,6 +156,14 @@ function abrirLancamento(ctx, lancamento, padrao, depois) {
         ${clientes.map((c) => `<option value="${esc(c.id)}" ${c.id === l.cliente_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}</select></div>
       <div class="campo"><label>Projeto</label><select name="projeto_id" ${dis}><option value="">Nenhum</option>
         ${projetos.map((p) => `<option value="${esc(p.id)}" ${p.id === l.projeto_id ? 'selected' : ''}>${esc(p.nome)}${ctx.cliente(p.cliente_id) ? ` · ${esc(ctx.cliente(p.cliente_id).nome)}` : ''}</option>`).join('')}</select></div>` : ''}
+      ${empresa ? `
+      <div class="campo inteiro nota-fiscal"><label>Nota fiscal</label>
+        <div class="linha-nota"><input type="text" name="nf_numero" maxlength="60" value="${esc(l.nf_numero ?? '')}" placeholder="Número da nota" ${dis}>
+          <a class="botao pequeno sutil" href="${LINK_EMISSOR_NF}" target="_blank" rel="noopener noreferrer">Emitir no Emissor Nacional ↗</a></div>
+        ${l.nf_caminho ? `<div class="arquivo-nota" id="arquivo-nota"><a id="ver-nota" target="_blank" rel="noopener noreferrer">${esc(l.nf_nome || 'Ver a nota')}</a>
+          ${podeSalvar ? '<button type="button" class="botao pequeno sutil perigo" id="tirar-nota">Tirar arquivo</button>' : ''}</div>` : ''}
+        ${podeSalvar ? `<input type="file" name="nf_arquivo" accept="${ACEITOS_NOTA}" aria-label="Arquivo da nota">
+        <div class="fraco">${l.nf_caminho ? 'Escolher outro arquivo troca o atual.' : 'Depois de emitir, baixe o PDF da nota e anexe aqui (PDF ou foto, até 5 MB).'}</div>` : ''}</div>` : ''}
       <div class="campo inteiro"><label>Observações</label><textarea name="observacoes" maxlength="2000" ${dis}>${esc(l.observacoes)}</textarea></div>
     </form><div class="erro" id="erro-lancamento"></div>`,
     rodape: `${podeApagar ? '<button class="botao perigo" id="apagar-lancamento">Apagar</button>' : ''}<span class="espaco"></span>
@@ -177,14 +191,47 @@ function abrirLancamento(ctx, lancamento, padrao, depois) {
       tipo: form.tipo.value, valor, descricao: form.descricao.value.trim(), categoria: form.categoria.value.trim(),
       data: form.data.value, pago: form.pago.checked, observacoes: form.observacoes.value.trim(),
     };
-    if (empresa) { dados.cliente_id = form.cliente_id.value || null; dados.projeto_id = form.projeto_id.value || null; }
+    if (empresa) {
+      dados.cliente_id = form.cliente_id.value || null; dados.projeto_id = form.projeto_id.value || null;
+      dados.nf_numero = form.nf_numero.value.trim();
+    }
+    // Arquivo da nota: o banco só aceita o envio para o caminho já registrado no lançamento.
+    const arquivo = empresa ? form.nf_arquivo?.files?.[0] : null;
+    const id = novo ? novoIdAnexo() : l.id;
+    let nota = null;
     try {
-      if (novo) await ctx.db().inserir('lancamentos', { ...dados, escopo: l.escopo });
+      if (arquivo) {
+        const { tipo, ext } = conferirNota(arquivo);
+        nota = { tipo, arquivo, caminho: `${id}/${novoIdAnexo()}.${ext}` };
+        Object.assign(dados, { nf_caminho: nota.caminho, nf_nome: arquivo.name.slice(0, 255) });
+      }
+      if (novo) await ctx.db().inserir('lancamentos', { ...dados, id, escopo: l.escopo });
       else await ctx.db().atualizar('lancamentos', l.id, dados);
+      if (nota) {
+        try { await ctx.db().enviarArquivoNota(nota.caminho, nota.arquivo, nota.tipo); } catch (err) {
+          // O envio falhou: o lançamento volta para a nota que tinha antes.
+          await ctx.db().atualizar('lancamentos', id, { nf_caminho: novo ? null : l.nf_caminho ?? null, nf_nome: novo ? '' : l.nf_nome ?? '' }).catch(() => {});
+          throw new Error(`O lançamento foi salvo, mas o arquivo da nota não foi enviado: ${err.message}`);
+        }
+        if (!novo && l.nf_caminho) await ctx.db().apagarArquivoNota(l.nf_caminho).catch(() => {});
+      }
       // Lançamento de outro mês: a tela vai para o mês dele, para a pessoa ver onde ficou.
       tela.mes = dados.data.slice(0, 7);
       fechar(); avisar(novo ? 'Lançamento salvo' : 'Lançamento atualizado'); await depois();
     } catch (err) { erro.textContent = err.message; }
+  });
+  // Link da nota guardada: vale por 1 hora.
+  if (l.nf_caminho) {
+    ctx.db().linkNota(l.nf_caminho).then((url) => { const a = $('#ver-nota', el); if (a && url) a.href = url; }).catch(() => {});
+  }
+  $('#tirar-nota', el)?.addEventListener('click', async (e) => {
+    if (e.target.dataset.confirmar !== 'sim') { e.target.dataset.confirmar = 'sim'; e.target.textContent = 'Clique de novo para tirar'; return; }
+    try {
+      await ctx.db().apagarArquivoNota(l.nf_caminho);
+      await ctx.db().atualizar('lancamentos', l.id, { nf_caminho: null, nf_nome: '' });
+      l.nf_caminho = null; l.nf_nome = '';
+      $('#arquivo-nota', el)?.remove(); avisar('Arquivo da nota retirado'); await depois();
+    } catch (err) { avisar(err.message); }
   });
   $('#apagar-lancamento', el)?.addEventListener('click', async (e) => {
     if (e.target.dataset.confirmar !== 'sim') { e.target.dataset.confirmar = 'sim'; e.target.textContent = 'Clique de novo para apagar'; return; }
