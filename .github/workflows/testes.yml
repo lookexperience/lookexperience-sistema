@@ -37,6 +37,10 @@ jobs:
       - name: Instalar o navegador de testes
         run: |
           npm install --no-save --no-package-lock playwright@1.56.1
-          npx playwright install --with-deps chromium
+          npx playwright install chromium
+          # As bibliotecas do Chromium já vêm na máquina do GitHub; o que falta são
+          # fontes extras (japonês, chinês...). Se o espelho do Ubuntu estiver fora
+          # do ar, segue sem elas em vez de derrubar os testes.
+          npx playwright install-deps chromium || echo "Aviso: fontes extras não instaladas (espelho do Ubuntu fora do ar)"
       - name: Testes das telas (cada tipo de usuário e ataques)
         run: node testes/telas.mjs
