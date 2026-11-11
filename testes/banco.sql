@@ -479,6 +479,82 @@ select teste.ok(teste.linhas($$delete from briefings where id = '40000000-0000-0
 select teste.como('00000000-0000-0000-0000-0000000000aa');
 select teste.ok(teste.linhas($$insert into briefings (projeto_id, modelo, titulo, perguntas) values ('20000000-0000-0000-0000-0000000000b1', 'marca', 'x', to_jsonb(repeat('a', 300000)))$$) = -1, 'Ataque: modelo de briefing gigante é recusado');
 
+-- ---------------------------------------------------------------------
+-- Finanças: pessoal (só o dono) e empresa (permissão "financeiro")
+-- ---------------------------------------------------------------------
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok(teste.linhas($$insert into lancamentos (id, escopo, tipo, descricao, valor) values ('50000000-0000-0000-0000-000000000001', 'pessoal', 'saida', 'Aluguel', 1200)$$) = 1, 'Qualquer pessoa da equipe cria lançamento pessoal');
+select teste.ok(teste.linhas($$insert into lancamentos (id, escopo, dono_id, tipo, descricao, valor) values ('50000000-0000-0000-0000-000000000002', 'pessoal', '00000000-0000-0000-0000-0000000000aa', 'saida', 'Mercado', 300)$$) = 1, 'Lançamento pessoal criado em nome de outro...');
+select teste.ok((select dono_id = '00000000-0000-0000-0000-0000000000bb' from lancamentos where id = '50000000-0000-0000-0000-000000000002'), '...fica com quem criou (não dá para pôr na conta de outra pessoa)');
+select teste.ok(teste.linhas($$insert into lancamentos (escopo, tipo, descricao, valor) values ('empresa', 'entrada', 'Mensalidade', 500)$$) = -1, 'Sem permissão de finanças, não lança no caixa da empresa');
+select teste.ok(teste.linhas($$insert into lancamentos (escopo, tipo, descricao, valor, projeto_id) values ('pessoal', 'saida', 'x', 10, '20000000-0000-0000-0000-000000000001')$$) = -1, 'Lançamento pessoal não se liga a projeto da empresa');
+select teste.ok(teste.linhas($$insert into lancamentos (escopo, tipo, descricao, valor) values ('pessoal', 'saida', 'x', -10)$$) = -1, 'Valor negativo ou zero é recusado');
+select teste.ok(teste.linhas($$insert into lancamentos (escopo, tipo, descricao, valor) values ('pessoal', 'saida', '  ', 10)$$) = -1, 'Lançamento sem descrição é recusado');
+select teste.ok(teste.linhas($$insert into lancamentos (escopo, tipo, descricao, valor) values ('pessoal', 'emprestimo', 'x', 10)$$) = -1, 'Tipo inventado é recusado');
+update lancamentos set escopo = 'empresa', dono_id = '00000000-0000-0000-0000-0000000000aa' where id = '50000000-0000-0000-0000-000000000001';
+select teste.ok((select escopo = 'pessoal' and dono_id = '00000000-0000-0000-0000-0000000000bb' from lancamentos where id = '50000000-0000-0000-0000-000000000001'), 'Ataque: não dá para passar o lançamento pessoal para a empresa nem para outra pessoa');
+select teste.ok(teste.linhas($$update lancamentos set valor = 1250, pago = false where id = '50000000-0000-0000-0000-000000000001'$$) = 1, 'Dono edita o próprio lançamento pessoal');
+
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.ok((select count(*) = 0 from lancamentos where dono_id = '00000000-0000-0000-0000-0000000000bb'), 'Nem o administrador vê as finanças pessoais dos outros');
+select teste.ok(teste.linhas($$update lancamentos set valor = 1 where id = '50000000-0000-0000-0000-000000000001'$$) = 0, 'Administrador não muda lançamento pessoal de outra pessoa');
+select teste.ok(teste.linhas($$delete from lancamentos where id = '50000000-0000-0000-0000-000000000001'$$) = 0, 'Administrador não apaga lançamento pessoal de outra pessoa');
+select teste.ok(teste.linhas($$insert into lancamentos (id, escopo, tipo, descricao, valor, cliente_id, projeto_id) values ('50000000-0000-0000-0000-000000000003', 'empresa', 'entrada', 'Rebranding Lotus (1ª parcela)', 2500, '10000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001')$$) = 1, 'Administrador lança no caixa da empresa, ligado a cliente e projeto');
+select teste.ok(teste.linhas($$insert into lancamentos (id, escopo, tipo, descricao, valor) values ('50000000-0000-0000-0000-000000000004', 'pessoal', 'entrada', 'Pró-labore', 3000)$$) = 1, 'Administrador também tem a própria aba pessoal');
+insert into permissoes values ('00000000-0000-0000-0000-0000000000bb', 'financeiro', true, false, false, false, 'proprias'),
+  ('00000000-0000-0000-0000-0000000000cc', 'financeiro', true, true, false, false, 'proprias');
+
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok((select count(*) = 1 from lancamentos where escopo = 'empresa'), 'Com permissão de ver finanças, vê o caixa da empresa');
+select teste.ok((select count(*) = 0 from lancamentos where escopo = 'pessoal' and dono_id = '00000000-0000-0000-0000-0000000000aa'), 'Ver o caixa da empresa não mostra as contas pessoais do administrador');
+select teste.ok(teste.linhas($$insert into lancamentos (escopo, tipo, descricao, valor) values ('empresa', 'saida', 'Adobe', 120)$$) = -1, 'Só com "ver", não lança no caixa da empresa');
+select teste.ok(teste.linhas($$update lancamentos set valor = 1 where id = '50000000-0000-0000-0000-000000000003'$$) = 0, 'Só com "ver", não muda o caixa da empresa');
+select teste.ok(teste.linhas($$delete from lancamentos where id = '50000000-0000-0000-0000-000000000003'$$) = 0, 'Só com "ver", não apaga do caixa da empresa');
+
+select teste.como('00000000-0000-0000-0000-0000000000cc');
+select teste.ok(teste.linhas($$insert into lancamentos (escopo, tipo, descricao, valor, cliente_id) values ('empresa', 'entrada', 'x', 10, '10000000-0000-0000-0000-000000000002')$$) = -1, 'Ataque: não liga lançamento a cliente que a pessoa não enxerga');
+select teste.ok(teste.linhas($$insert into lancamentos (escopo, tipo, descricao, valor) values ('empresa', 'saida', 'Cartão de memória', 90)$$) = 1, 'Com permissão de criar, lança no caixa da empresa');
+select teste.ok((select count(*) = 0 from lancamentos where escopo = 'pessoal'), 'Quem não lançou nada pessoal não vê nenhuma conta pessoal');
+
+select teste.como('00000000-0000-0000-0000-0000000000ee');
+select teste.ok(teste.linhas($$insert into lancamentos (escopo, tipo, descricao, valor) values ('pessoal', 'saida', 'x', 10)$$) = -1, 'Conta desativada não lança nada');
+
+-- Nota fiscal no lançamento da empresa
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.ok(teste.linhas($$update lancamentos set nf_numero = '2026/123', nf_nome = 'nota.pdf', nf_caminho = '50000000-0000-0000-0000-000000000003/c0000000-0000-0000-0000-000000000001.pdf' where id = '50000000-0000-0000-0000-000000000003'$$) = 1, 'Admin registra a nota fiscal no lançamento da empresa');
+select teste.ok(teste.linhas($$insert into storage.objects (bucket_id, name) values ('notas', '50000000-0000-0000-0000-000000000003/c0000000-0000-0000-0000-000000000001.pdf')$$) = 1, 'Admin envia o arquivo da nota');
+select teste.ok(teste.linhas($$insert into storage.objects (bucket_id, name) values ('notas', '50000000-0000-0000-0000-000000000003/c0000000-0000-0000-0000-000000000009.pdf')$$) = -1, 'Ataque: arquivo de nota sem registro no lançamento não é aceito');
+select teste.ok(teste.linhas($$update lancamentos set nf_caminho = '50000000-0000-0000-0000-000000000004/c0000000-0000-0000-0000-000000000002.pdf' where id = '50000000-0000-0000-0000-000000000003'$$) = -1, 'Ataque: nota não aponta para a pasta de outro lançamento');
+select teste.ok(teste.linhas($$update lancamentos set nf_caminho = '50000000-0000-0000-0000-000000000004/c0000000-0000-0000-0000-000000000002.pdf' where id = '50000000-0000-0000-0000-000000000004'$$) = -1, 'Lançamento pessoal não guarda arquivo de nota');
+select teste.ok(teste.linhas($$update lancamentos set nf_caminho = '50000000-0000-0000-0000-000000000003/c0000000-0000-0000-0000-000000000003.exe' where id = '50000000-0000-0000-0000-000000000003'$$) = -1, 'Ataque: nota só aceita PDF ou foto');
+
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok((select count(*) = 1 from storage.objects where bucket_id = 'notas'), 'Quem vê o caixa da empresa abre a nota');
+select teste.ok(teste.linhas($$delete from storage.objects where bucket_id = 'notas'$$) = 0, 'Só com "ver", não apaga a nota');
+
+select teste.como('00000000-0000-0000-0000-0000000000dd');
+select teste.ok((select count(*) = 0 from storage.objects where bucket_id = 'notas'), 'Sem permissão de finanças, não abre nenhuma nota');
+
+select teste.como('00000000-0000-0000-0000-0000000000cc');
+select teste.ok(teste.linhas($$insert into lancamentos (id, escopo, tipo, descricao, valor, nf_numero, nf_caminho) values ('50000000-0000-0000-0000-000000000005', 'empresa', 'entrada', 'Diária de gravação', 800, '45', '50000000-0000-0000-0000-000000000005/c0000000-0000-0000-0000-000000000005.png')$$) = 1, 'Quem pode criar lança a entrada já com a nota');
+select teste.ok(teste.linhas($$insert into storage.objects (bucket_id, name) values ('notas', '50000000-0000-0000-0000-000000000005/c0000000-0000-0000-0000-000000000005.png')$$) = 1, '...e envia o arquivo da nota que acabou de lançar');
+select teste.ok(teste.linhas($$insert into storage.objects (bucket_id, name) values ('notas', '50000000-0000-0000-0000-000000000003/c0000000-0000-0000-0000-000000000001.pdf')$$) = -1, 'Ataque: não substitui o arquivo de nota de outra pessoa');
+select teste.ok(teste.linhas($$delete from storage.objects where bucket_id = 'notas'$$) = 0, 'Sem editar nem apagar, não apaga nota');
+
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.ok(teste.linhas($$delete from storage.objects where name = '50000000-0000-0000-0000-000000000005/c0000000-0000-0000-0000-000000000005.png'$$) = 1, 'Admin apaga o arquivo da nota');
+
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok(teste.linhas($$delete from lancamentos where id = '50000000-0000-0000-0000-000000000002'$$) = 1, 'Dono apaga o próprio lançamento pessoal');
+reset role;
+set role anon;
+select teste.como(null);
+select teste.ok(teste.linhas($$select * from lancamentos$$) = -1, 'Ataque: visitante sem login não lê nenhuma finança');
+reset role;
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+
 -- Visitante sem login chamando as funções do banco direto pela API
 reset role;
 set role anon;

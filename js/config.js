@@ -12,6 +12,9 @@ export const MODO_DEMO = !CONFIG.supabaseUrl
   || ['localhost', '127.0.0.1'].includes(location.hostname)
   || new URLSearchParams(location.search).has('demo');
 
+// Onde a LOOK emite as notas fiscais de serviço (NFS-e): o Emissor Nacional do gov.br.
+export const LINK_EMISSOR_NF = 'https://www.nfse.gov.br/EmissorNacional';
+
 export const SETORES = [
   { chave: 'comercial', nome: 'Comercial' },
   { chave: 'criacao', nome: 'Criação' },
@@ -50,7 +53,7 @@ export const MODULOS = [
   { chave: 'execucao', nome: 'Execução', fase: 3 },
   { chave: 'materiais', nome: 'Banco de materiais', fase: 3 },
   { chave: 'equipamentos', nome: 'Equipamentos', fase: 3 },
-  { chave: 'financeiro', nome: 'Financeiro', fase: 4 },
+  { chave: 'financeiro', nome: 'Financeiro da empresa', fase: 1 },
   { chave: 'horas', nome: 'Registro de horas', fase: 4 },
   { chave: 'equipe', nome: 'Equipe e acessos', fase: 1 },
 ];

@@ -103,10 +103,10 @@ await teste('Site envia a política de segurança (CSP) do Netlify', async () =>
 });
 
 await teste('Admin: sistema abre e mostra o menu completo', async () => {
-  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Apresentações', 'Equipe e acessos'], 'menu');
+  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Finanças', 'Apresentações', 'Equipe e acessos'], 'menu');
 });
 
-for (const rota of ['visao-geral', 'atividades', 'calendario', 'clientes', 'projetos', 'apresentacoes', 'equipe', 'sobre']) {
+for (const rota of ['visao-geral', 'atividades', 'calendario', 'clientes', 'projetos', 'financas', 'apresentacoes', 'equipe', 'sobre']) {
   await teste(`Admin: tela "${rota}" abre sem erro`, async () => {
     await ir(rota);
     confere(!(await p.locator('#pagina .erro').count()), 'apareceu mensagem de erro');
@@ -591,7 +591,7 @@ await teste('Admin: troca a senha de acesso (Enter salva, sem pôr a senha no en
 await comoUsuario('u-marina');
 
 await teste('Gerente: menu sem Equipe e acessos', async () => {
-  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Apresentações'], 'menu');
+  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Finanças', 'Apresentações'], 'menu');
 });
 
 await teste('Gerente: recebeu o aviso da menção', async () => {
@@ -655,8 +655,8 @@ await teste('Gerente: cria projeto', async () => {
 // =====================================================================
 await comoUsuario('u-rafa');
 
-await teste('Freelancer: menu só com Visão geral, Atividades, Calendário e Apresentações', async () => {
-  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Apresentações'], 'menu');
+await teste('Freelancer: menu só com Visão geral, Atividades, Calendário, Finanças e Apresentações', async () => {
+  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Finanças', 'Apresentações'], 'menu');
 });
 
 await teste('Freelancer: vê só as tarefas dele', async () => {
@@ -717,7 +717,7 @@ await teste('Freelancer: clicar num dia vazio do calendário não abre nada', as
 // =====================================================================
 await teste('Conta liberada pelo admin entra no sistema', async () => {
   await comoUsuario('u-novo');
-  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Apresentações'], 'menu');
+  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Finanças', 'Apresentações'], 'menu');
 });
 
 await teste('Conta desativada vê "Conta desativada"', async () => {
@@ -763,12 +763,138 @@ await teste('Tela de criar conta pede a senha de acesso da LOOK', async () => {
 });
 
 // =====================================================================
+// FINANÇAS: pessoal (só o dono) e empresa (permissão "financeiro")
+// =====================================================================
+const reais = async (sel) => ((await p.textContent(sel)) ?? '').replace(/\s/g, ' ').trim();
+
+await teste('Finanças: aba pessoal mostra entradas, saídas e saldo do mês', async () => {
+  await comoUsuario('u-pablo');
+  await p.click('#resetar-demo'); await p.waitForTimeout(300);
+  await ir('financas');
+  igual(await p.locator('.aba.ativa').textContent(), 'Pessoal', 'aba aberta');
+  confere((await p.textContent('.aviso-financas')).includes('Só você vê'), 'sem aviso de privacidade');
+  igual(await reais('#total-entradas'), 'R$ 3.500,00', 'entradas');
+  igual(await reais('#total-saidas'), 'R$ 1.840,50', 'saídas pagas');
+  igual(await reais('#saldo-mes'), 'R$ 1.659,50', 'saldo');
+  confere((await reais('#pendentes')).includes('R$ 180,00 a pagar'), 'conta a pagar não aparece');
+  confere((await p.textContent('.painel')).includes('Mercado do mês'), 'lançamento não aparece');
+  confere(!(await p.locator('tr', { hasText: 'Academia' }).count()), 'conta pessoal da Marina apareceu para o admin');
+  await p.screenshot({ path: join(CAPTURAS, 'financas-pessoal.png') });
+});
+
+await teste('Finanças: lança uma saída digitando o valor com vírgula', async () => {
+  await p.click('#nova-saida');
+  await p.fill('[name=descricao]', 'Farmácia');
+  await p.fill('[name=valor]', 'abc');
+  await p.click('#salvar-lancamento');
+  confere((await p.textContent('#erro-lancamento')).includes('Confira o valor'), 'valor errado foi aceito');
+  await p.fill('[name=valor]', '45,90');
+  await p.fill('[name=categoria]', 'Saúde');
+  await p.click('#salvar-lancamento'); await p.waitForTimeout(200);
+  igual(await p.locator('.modal').count(), 0, 'janela não fechou');
+  igual(await reais('#saldo-mes'), 'R$ 1.613,60', 'saldo depois da saída');
+  confere((await p.textContent('.categoria-gasto:has-text("Saúde")')).includes('45,90'), 'categoria não somou');
+});
+
+await teste('Finanças: marcar a conta como paga tira do "a pagar" e entra no saldo', async () => {
+  await p.click('tr[data-id]:has-text("Conta de luz")');
+  await p.check('[name=pago]');
+  await p.click('#salvar-lancamento'); await p.waitForTimeout(200);
+  igual(await p.locator('#pendentes').count(), 0, 'continua a pagar');
+  igual(await reais('#saldo-mes'), 'R$ 1.433,60', 'saldo');
+});
+
+await teste('Finanças: setas trocam o mês', async () => {
+  await p.click('#mes-antes'); await p.waitForTimeout(100);
+  confere((await p.textContent('.vazio')).includes('Nenhum lançamento'), 'mês anterior não está vazio');
+  igual(await reais('#saldo-acumulado'), 'R$ 0,00', 'acumulado do mês anterior');
+  await p.click('#mes-hoje'); await p.waitForTimeout(100);
+  igual(await reais('#saldo-mes'), 'R$ 1.433,60', 'voltou para este mês');
+});
+
+await teste('Finanças: aba Empresa mostra o caixa da LOOK com cliente e projeto', async () => {
+  await p.click('[data-aba=empresa]'); await p.waitForTimeout(100);
+  igual(await reais('#total-entradas'), 'R$ 2.500,00', 'entradas da empresa');
+  confere((await p.textContent('tr:has-text("Rebranding Lotus")')).includes('Lotus Games'), 'cliente não aparece');
+  confere((await reais('#pendentes')).includes('R$ 1.500,00 a receber'), 'a receber');
+  confere(!(await p.locator('tr', { hasText: 'Aluguel' }).count()), 'conta pessoal apareceu no caixa da empresa');
+  await p.click('#nova-entrada');
+  await p.selectOption('[name=projeto_id]', 'p-fusion');
+  igual(await p.inputValue('[name=cliente_id]'), 'c-fusion', 'projeto não preencheu o cliente');
+  await fecharModal();
+  await p.screenshot({ path: join(CAPTURAS, 'financas-empresa.png') });
+});
+
+await teste('Finanças: caixa da empresa tem atalho para o Emissor Nacional e marca entrada sem nota', async () => {
+  igual(await p.getAttribute('#emitir-nf', 'href'), 'https://www.nfse.gov.br/EmissorNacional', 'link do emissor');
+  igual(await p.getAttribute('#emitir-nf', 'target'), '_blank', 'abre em aba nova');
+  confere(await p.locator('tr:has-text("Rebranding Lotus") .sem-nota').count(), 'entrada sem nota não marcada');
+  confere(!(await p.locator('tr:has-text("Adobe") .sem-nota').count()), 'saída marcada como sem nota');
+});
+
+await teste('Finanças: arquivo que não é PDF nem foto não vira nota', async () => {
+  await p.click('tr[data-id]:has-text("Rebranding Lotus")');
+  await p.setInputFiles('[name=nf_arquivo]', { name: 'nota.txt', mimeType: 'text/plain', buffer: Buffer.from('x') });
+  await p.click('#salvar-lancamento'); await p.waitForTimeout(150);
+  confere((await p.textContent('#erro-lancamento')).includes('PDF ou uma foto'), 'arquivo errado foi aceito');
+  await fecharModal();
+});
+
+await teste('Finanças: registra o número e o PDF da nota fiscal no lançamento', async () => {
+  await p.click('tr[data-id]:has-text("Rebranding Lotus")');
+  await p.fill('[name=nf_numero]', '2026/15');
+  await p.setInputFiles('[name=nf_arquivo]', { name: 'nota-lotus.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 nota') });
+  await p.click('#salvar-lancamento'); await p.waitForTimeout(250);
+  igual(await p.locator('.modal').count(), 0, 'janela não fechou');
+  confere((await p.textContent('tr:has-text("Rebranding Lotus")')).includes('NF 2026/15'), 'número da nota não aparece');
+  confere(!(await p.locator('tr:has-text("Rebranding Lotus") .sem-nota').count()), 'continua "Sem nota"');
+  await p.click('tr[data-id]:has-text("Rebranding Lotus")');
+  await p.waitForFunction(() => document.querySelector('#ver-nota')?.href.startsWith('blob:'));
+  igual((await p.textContent('#ver-nota')).trim(), 'nota-lotus.pdf', 'nome do arquivo');
+  await p.click('#tirar-nota'); await p.click('#tirar-nota'); await p.waitForTimeout(250);
+  await fecharModal();
+  await p.click('tr[data-id]:has-text("Rebranding Lotus")');
+  igual(await p.locator('#ver-nota').count(), 0, 'arquivo não saiu');
+  igual(await p.inputValue('[name=nf_numero]'), '2026/15', 'número sumiu junto com o arquivo');
+  await fecharModal();
+});
+
+await teste('Finanças: gerente sem permissão só vê a própria aba pessoal', async () => {
+  await comoUsuario('u-marina');
+  await ir('financas');
+  igual(await p.locator('.aba').count(), 0, 'aba Empresa apareceu');
+  confere(await p.locator('tr', { hasText: 'Academia' }).count(), 'não vê a própria conta');
+  confere(!(await p.locator('tr', { hasText: 'Aluguel' }).count()), 'vê as contas pessoais do admin');
+  confere(!(await p.textContent('#pagina')).includes('Rebranding Lotus'), 'vê o caixa da empresa');
+});
+
+await teste('Finanças: admin libera "Financeiro da empresa" só para ver', async () => {
+  await comoUsuario('u-pablo');
+  await ir('equipe');
+  await p.click('tr[data-id=u-marina]');
+  confere(await p.locator('tr[data-modulo=financeiro]', { hasText: 'Financeiro da empresa' }).count(), 'permissão não aparece na equipe');
+  await p.check('tr[data-modulo=financeiro] [data-acao=ver]');
+  await p.click('#salvar'); await p.waitForTimeout(200);
+  await comoUsuario('u-marina');
+  await ir('financas');
+  await p.click('[data-aba=empresa]'); await p.waitForTimeout(100);
+  confere((await p.textContent('#pagina')).includes('Rebranding Lotus'), 'não vê o caixa da empresa');
+  igual(await p.locator('#nova-entrada').count(), 0, 'pode lançar só com "ver"');
+  await p.click('tr[data-id]:has-text("Rebranding Lotus")');
+  igual(await p.locator('#salvar-lancamento').count(), 0, 'pode salvar só com "ver"');
+  await fecharModal();
+  await p.click('[data-aba=pessoal]'); await p.waitForTimeout(100);
+  confere(!(await p.locator('tr', { hasText: 'Aluguel' }).count()), 'ver a empresa mostrou as contas pessoais do admin');
+  await comoUsuario('u-pablo');
+});
+
+// =====================================================================
 // CELULAR
 // =====================================================================
 await teste('Celular: telas cabem na largura (sem rolagem para o lado)', async () => {
   await comoUsuario('u-pablo');
   await p.setViewportSize({ width: 390, height: 844 });
-  for (const rota of ['visao-geral', 'clientes', 'projetos']) {
+  for (const rota of ['visao-geral', 'clientes', 'projetos', 'financas']) {
     await ir(rota);
     const sobra = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     confere(sobra <= 1, `${rota} passa ${sobra}px da tela`);
@@ -799,6 +925,7 @@ await teste('Ataque: código escondido em nomes, textos e cores não é executad
     for (const pr of b.projetos) { pr.nome = `Projeto ${isca('projeto.nome')}${fuga('projeto.nome2')}`; pr.tipo = fuga('projeto.tipo'); pr.descricao = isca('projeto.desc'); }
     for (const t of b.tarefas) { t.titulo = `Tarefa ${isca('tarefa.titulo')}${fuga('tarefa.titulo2')}`; t.descricao = isca('tarefa.desc'); t.local = fuga('tarefa.local'); }
     for (const c of b.comentarios) c.texto = `@Rafa ${isca('comentario')}${fuga('comentario2')}`;
+    for (const l of b.lancamentos) { l.descricao = `Conta ${isca('lancamento.desc')}${fuga('lancamento.desc2')}`; l.categoria = fuga('lancamento.cat'); l.observacoes = fuga('lancamento.obs'); }
     b.avisos.push({ id: 'a-xss', usuario_id: 'u-pablo', texto: isca('aviso'), tarefa_id: b.tarefas[0].id, lido: false, criado_em: new Date().toISOString() });
     localStorage.setItem('look-sistema-demo-v4', JSON.stringify(dados));
   });
@@ -806,7 +933,7 @@ await teste('Ataque: código escondido em nomes, textos e cores não é executad
   const injetados = () => p.evaluate(() => [...document.querySelectorAll('[data-xss]')].map((e) => e.getAttribute('data-xss')).concat(window.__xss ?? []));
   const achados = new Set();
   const anotar = async () => (await injetados()).forEach((x) => achados.add(x));
-  for (const rota of ['visao-geral', 'atividades', 'calendario', 'clientes', 'projetos', 'apresentacoes', 'equipe', 'sobre']) {
+  for (const rota of ['visao-geral', 'atividades', 'calendario', 'clientes', 'projetos', 'financas', 'apresentacoes', 'equipe', 'sobre']) {
     await ir(rota); await anotar();
   }
   await ir('calendario'); await p.click('[data-aba=postagens]'); await anotar();
@@ -814,6 +941,8 @@ await teste('Ataque: código escondido em nomes, textos e cores não é executad
   await ir('clientes'); await p.locator('tr[data-id]').first().click(); await p.waitForTimeout(150); await anotar(); await fecharModal();
   await ir('projetos'); await p.locator('tr[data-id]').first().click(); await p.waitForTimeout(150); await anotar(); await fecharModal();
   await ir('equipe'); await p.locator('tr[data-id=u-rafa]').click(); await p.waitForTimeout(150); await anotar(); await fecharModal();
+  await ir('financas'); await p.locator('tr[data-id]').first().click(); await p.waitForTimeout(150); await anotar(); await fecharModal();
+  await p.click('[data-aba=empresa]'); await anotar(); await p.locator('tr[data-id]').first().click(); await p.waitForTimeout(150); await anotar(); await fecharModal();
   await p.click('#abrir-avisos'); await p.waitForTimeout(150); await anotar();
   for (const usuario of ['u-marina', 'u-rafa', 'u-novo']) { await comoUsuario(usuario); await anotar(); }
   await comoUsuario('u-pablo');

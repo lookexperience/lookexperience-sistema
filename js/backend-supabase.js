@@ -32,6 +32,10 @@ function traduzirErro(msg) {
   if (/anexos_tipo/i.test(msg)) return 'Esse tipo de arquivo não é aceito: só imagens, PDF, Word, PowerPoint e Excel.';
   if (/anexos_tamanhos/i.test(msg)) return 'Arquivo grande demais: o limite é 20 MB.';
   if (/briefings_tamanhos/i.test(msg)) return 'Briefing grande demais.';
+  if (/lancamentos_valor/i.test(msg)) return 'O valor precisa ser maior que zero.';
+  if (/lancamentos_tamanhos/i.test(msg)) return 'Preencha a descrição (até 200 letras).';
+  if (/lancamentos_data/i.test(msg)) return 'Confira a data.';
+  if (/lancamentos_nf/i.test(msg)) return 'Confira o número e o arquivo da nota fiscal.';
   if (/Failed to fetch|NetworkError/i.test(msg)) return 'Sem conexão com o servidor. Confira a internet e tente de novo.';
   return msg;
 }
@@ -78,6 +82,10 @@ export async function atualizar(tabela, id, mudancas) {
 
 export async function apagar(tabela, id) {
   // Os arquivos dos anexos ficam fora da tabela: saem do depósito antes do projeto.
+  if (tabela === 'lancamentos') {
+    const l = checar(await sb.from('lancamentos').select('nf_caminho').eq('id', id).maybeSingle());
+    if (l?.nf_caminho) checar(await sb.storage.from('notas').remove([l.nf_caminho]));
+  }
   if (tabela === 'projetos') {
     const anexos = checar(await sb.from('anexos').select('caminho').eq('projeto_id', id));
     if (anexos.length) checar(await sb.storage.from('anexos').remove(anexos.map((a) => a.caminho)));
@@ -133,6 +141,20 @@ export async function apagarAnexo(anexo) {
   const removidos = checar(await deposito().remove([anexo.caminho]));
   if (!removidos?.length) throw new Error('Você não tem permissão para isso.');
   await apagar('anexos', anexo.id);
+}
+
+// ---------- Notas fiscais dos lançamentos da empresa ----------
+export async function enviarArquivoNota(caminho, arquivo, tipo) {
+  checar(await sb.storage.from('notas').upload(caminho, arquivo, { contentType: tipo, upsert: false }));
+}
+
+export async function linkNota(caminho) {
+  return checar(await sb.storage.from('notas').createSignedUrl(caminho, 3600)).signedUrl;
+}
+
+export async function apagarArquivoNota(caminho) {
+  const removidos = checar(await sb.storage.from('notas').remove([caminho]));
+  if (!removidos?.length) throw new Error('Você não tem permissão para isso.');
 }
 
 // ---------- Briefing pelo link do cliente (sem login) ----------
