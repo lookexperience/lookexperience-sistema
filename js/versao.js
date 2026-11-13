@@ -2,6 +2,20 @@
 // entrada no topo desta lista; a tela "Sobre o sistema" mostra tudo.
 export const HISTORICO = [
   {
+    versao: '0.8.0',
+    data: '2026-11-13',
+    titulo: 'Orçamentos',
+    itens: [
+      'Nova tela "Orçamentos" no menu: o gerador de orçamento da LOOK dentro do sistema, com a tabela de preços e os textos padrão',
+      'Cada orçamento fica salvo, com número automático por ano (2026-001, 2026-002...) que nunca se repete nem muda',
+      'Escolher o cliente ou o projeto do sistema preenche os dados do cliente na folha',
+      'Prévia da folha ao lado, igual ao PDF; "Gerar PDF" baixa o arquivo com texto de verdade e as fontes da LOOK',
+      'Status rascunho, enviado, aprovado e recusado, com abas para filtrar; "Duplicar" cria um novo a partir de outro',
+      'Orçamento aprovado tem o botão "Lançar no caixa (a receber)", que cria a entrada no Caixa da LOOK ligada ao cliente',
+      'Quem vê, cria, muda e apaga orçamentos segue a permissão "Comercial e orçamentos" em Equipe e acessos',
+    ],
+  },
+  {
     versao: '0.7.0',
     data: '2026-11-10',
     titulo: 'Finanças: pessoal e da empresa',

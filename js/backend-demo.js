@@ -109,7 +109,18 @@ function semente() {
     l(pablo, 'empresa', 'saida', 'Adobe Creative Cloud', 124, 2, { categoria: 'Ferramentas e assinaturas' }),
     l(pablo, 'empresa', 'saida', 'Edição freelancer (reels)', 450, 12, { categoria: 'Freelancers', projeto_id: 'p-lotus', cliente_id: 'c-lotus' }),
   ];
-  return { perfis, permissoes, clientes, projetos, tarefas, comentarios, avisos, anexos: [], briefings: [], lancamentos, notas: {} };
+  const ano = diaRelativo(0).slice(0, 4);
+  const itens = [
+    { cat: 'Marca', d: 'Identidade visual', det: 'Logo, paleta de cores, tipografia e aplicações principais.', u: 'projeto', q: 1, valor: 3000, mensal: false },
+    { cat: 'Planos mensais', d: 'Plano Inicial', det: 'Conteúdo mensal para redes sociais.', u: 'mês', q: 1, valor: 1599.99, mensal: true },
+  ];
+  const orcamentos = [
+    { id: novoId(), numero: `${ano}-001`, titulo: 'Identidade visual + conteúdo', status: 'enviado', cliente_id: 'c-ketlin', projeto_id: 'p-ketlin', lancamento_id: null,
+      dados: { data: diaRelativo(-2), clienteEmpresa: 'Ketlin Joias', clienteNome: 'Ketlin', clienteContato: '', intro: '', itens, desconto: 0, descontoTipo: 'pct', validadeDias: 15,
+        pagamento: 'Pix ou cartão.', prazo: '', revisoes: '', incluso: '', naoIncluso: '', obs: '', mostrarAceite: true, responsavel: 'Pablo Caetano · LOOK', cnpj: '68.954.688/0001-82', contatoLook: '' },
+      total_unico: 3000, total_mensal: 1599.99, criado_por: pablo, criado_em: agora, atualizado_em: agora },
+  ];
+  return { perfis, permissoes, clientes, projetos, tarefas, comentarios, avisos, anexos: [], briefings: [], lancamentos, notas: {}, orcamentos };
 }
 
 export async function iniciar() {
@@ -119,7 +130,7 @@ export async function iniciar() {
   } catch { /* sem armazenamento */ }
   for (const t of banco?.tarefas ?? []) t.responsaveis ??= t.responsavel_id ? [t.responsavel_id] : [];
   for (const p of banco?.projetos ?? []) p.briefing ??= 'dispensado';
-  if (banco) { banco.briefings ??= []; banco.lancamentos ??= []; banco.notas ??= {}; }
+  if (banco) { banco.briefings ??= []; banco.lancamentos ??= []; banco.notas ??= {}; banco.orcamentos ??= []; }
   if (!banco) { banco = semente(); usuarioAtual = 'u-pablo'; salvar(); }
 }
 
@@ -163,6 +174,7 @@ function visivel(tabela, linha, s) {
     case 'briefings': return pode(s, 'projetos', 'ver') && banco.projetos.some((p) => p.id === linha.projeto_id && visivel('projetos', p, s));
     // Pessoal: só o dono, nem o admin. Empresa: permissão "financeiro".
     case 'lancamentos': return linha.escopo === 'pessoal' ? linha.dono_id === eu && s.perfil.ativo : pode(s, 'financeiro', 'ver');
+    case 'orcamentos': return pode(s, 'comercial', 'ver');
     default: return false;
   }
 }
@@ -196,6 +208,18 @@ function conferirLancamento(l, s) {
   const cliente = l.cliente_id && banco.clientes.find((c) => c.id === l.cliente_id);
   const projeto = l.projeto_id && banco.projetos.find((p) => p.id === l.projeto_id);
   if ((l.cliente_id && !(cliente && visivel('clientes', cliente, s))) || (l.projeto_id && !(projeto && visivel('projetos', projeto, s)))) negar();
+}
+
+// Mesmos limites do banco para os orçamentos.
+function conferirOrcamento(o, s) {
+  if (!['rascunho', 'enviado', 'aprovado', 'recusado'].includes(o.status ?? 'rascunho')) throw new Error('Status de orçamento inválido.');
+  if ((o.titulo ?? '').length > 200 || JSON.stringify(o.dados ?? {}).length > 200000) throw new Error('Orçamento grande demais: confira o título (até 200 letras) e a quantidade de itens.');
+  for (const v of [o.total_unico ?? 0, o.total_mensal ?? 0]) if (!(Number(v) >= 0 && Number(v) <= 1e9)) throw new Error('Confira os valores do orçamento.');
+  const cliente = o.cliente_id && banco.clientes.find((c) => c.id === o.cliente_id);
+  const projeto = o.projeto_id && banco.projetos.find((p) => p.id === o.projeto_id);
+  const lanc = o.lancamento_id && banco.lancamentos.find((l) => l.id === o.lancamento_id);
+  if ((o.cliente_id && !(cliente && visivel('clientes', cliente, s))) || (o.projeto_id && !(projeto && visivel('projetos', projeto, s)))
+    || (o.lancamento_id && !(lanc && lanc.escopo === 'empresa' && visivel('lancamentos', lanc, s)))) negar();
 }
 
 const novoToken = () => Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
@@ -237,6 +261,13 @@ export async function inserir(tabela, dados) {
     conferirLancamento(linha, s);
     if (linha.escopo === 'pessoal' ? !s.perfil.ativo : !pode(s, 'financeiro', 'criar')) negar();
     Object.assign(linha, { dono_id: eu, atualizado_em: linha.criado_em });
+  } else if (tabela === 'orcamentos') {
+    if (!pode(s, 'comercial', 'criar') || linha.lancamento_id) negar();
+    conferirOrcamento(linha, s);
+    // Igual ao banco: o número sai em sequência por ano, nunca escolhido.
+    const ano = chaveDia(new Date()).slice(0, 4);
+    const ultimo = Math.max(0, ...banco.orcamentos.filter((o) => o.numero.startsWith(`${ano}-`)).map((o) => Number(o.numero.split('-')[1])));
+    Object.assign(linha, { numero: `${ano}-${String(ultimo + 1).padStart(3, '0')}`, status: linha.status ?? 'rascunho', criado_por: eu, atualizado_em: linha.criado_em });
   } else negar();
   banco[tabela].push(linha);
   salvar();
@@ -280,6 +311,11 @@ export async function atualizar(tabela, id, mudancas) {
     const { dono_id: _d, escopo: _e, criado_em: _c, ...resto } = mudancas;
     mudancas = { ...resto, atualizado_em: new Date().toISOString() };
     conferirLancamento({ ...linha, ...mudancas }, s);
+  } else if (tabela === 'orcamentos') {
+    if (!pode(s, 'comercial', 'editar')) negar();
+    const { numero: _n, criado_por: _p, criado_em: _c, ...resto } = mudancas;
+    mudancas = { ...resto, atualizado_em: new Date().toISOString() };
+    conferirOrcamento({ ...linha, ...mudancas }, s);
   } else if (tabela !== 'avisos') negar();
   Object.assign(linha, mudancas);
   salvar();
@@ -296,6 +332,7 @@ export async function apagar(tabela, id) {
     projetos: () => pode(s, 'projetos', 'apagar'),
     briefings: () => pode(s, 'projetos', 'editar') && (linha.status === 'aguardando' || pode(s, 'projetos', 'apagar')),
     lancamentos: () => linha.escopo === 'pessoal' || pode(s, 'financeiro', 'apagar'),
+    orcamentos: () => pode(s, 'comercial', 'apagar'),
     comentarios: () => linha.autor_id === s.perfil.id || s.perfil.admin,
     avisos: () => true,
     perfis: () => s.perfil.admin && id !== s.perfil.id,
@@ -310,6 +347,9 @@ export async function apagar(tabela, id) {
   if (tabela === 'projetos') banco.anexos = (banco.anexos ?? []).filter((a) => a.projeto_id !== id);
   if (tabela === 'projetos') banco.briefings = (banco.briefings ?? []).filter((b) => b.projeto_id !== id);
   if (tabela === 'lancamentos' && linha.nf_caminho) delete banco.notas[linha.nf_caminho];
+  if (tabela === 'lancamentos') banco.orcamentos.forEach((o) => { if (o.lancamento_id === id) o.lancamento_id = null; });
+  if (tabela === 'clientes') banco.orcamentos.forEach((o) => { if (o.cliente_id === id) o.cliente_id = null; });
+  if (tabela === 'projetos') banco.orcamentos.forEach((o) => { if (o.projeto_id === id) o.projeto_id = null; });
   salvar();
 }
 

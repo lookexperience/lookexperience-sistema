@@ -103,7 +103,7 @@ await teste('Site envia a política de segurança (CSP) do Netlify', async () =>
 });
 
 await teste('Admin: sistema abre e mostra o menu completo', async () => {
-  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Finanças', 'Apresentações', 'Equipe e acessos'], 'menu');
+  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Orçamentos', 'Finanças', 'Apresentações', 'Equipe e acessos'], 'menu');
 });
 
 for (const rota of ['visao-geral', 'atividades', 'calendario', 'clientes', 'projetos', 'financas', 'apresentacoes', 'equipe', 'sobre']) {
@@ -889,17 +889,134 @@ await teste('Finanças: admin libera "Financeiro da empresa" só para ver', asyn
 });
 
 // =====================================================================
+// ORÇAMENTOS (permissão "comercial")
+// =====================================================================
+const ANO = String(new Date().getFullYear());
+
+await teste('Orçamentos: lista mostra o orçamento de exemplo com status e total', async () => {
+  await comoUsuario('u-pablo');
+  await ir('orcamentos');
+  const linha = p.locator('tr[data-id]', { hasText: `${ANO}-001` });
+  confere(await linha.count(), 'orçamento de exemplo não aparece');
+  confere((await linha.textContent()).includes('Enviado'), 'status não aparece');
+  confere((await linha.textContent()).replace(/\s/g, ' ').includes('R$ 3.000,00 + R$ 1.599,99/mês'), 'total não aparece');
+  await p.click('[data-filtro=aprovado]'); await p.waitForTimeout(80);
+  igual(await p.locator('tr[data-id]').count(), 0, 'filtro de status não filtrou');
+  await p.click('[data-filtro=todos]'); await p.waitForTimeout(80);
+});
+
+await teste('Orçamentos: novo orçamento com cliente, itens da tabela e desconto', async () => {
+  await ir('orcamentos');
+  await p.click('#novo-orcamento');
+  await p.fill('[name=titulo]', 'Logo + conteúdo mensal');
+  await p.selectOption('[name=cliente_id]', 'c-fusion');
+  igual(await p.inputValue('[name=clienteEmpresa]'), 'Fusion Soldas', 'cliente não preencheu a empresa');
+  await p.selectOption('#item-da-tabela', 'Marca|0'); await p.click('#add-item-tabela');
+  await p.selectOption('#item-da-tabela', 'Planos mensais|0'); await p.click('#add-item-tabela');
+  igual(await p.locator('.item-orc').count(), 2, 'itens não entraram');
+  await p.fill('[name=desconto]', '10');
+  igual(await reais('#orc-total-unico'), 'R$ 1.350,00', 'total único com desconto');
+  igual(await reais('#orc-total-mensal'), 'R$ 1.439,99', 'total mensal com desconto');
+  confere((await p.textContent('#folha-orc')).includes('Fusion Soldas'), 'cliente não aparece na folha');
+  await p.click('#salvar-orcamento'); await p.waitForTimeout(150);
+  igual((await p.textContent('h1')).trim(), `Orçamento ${ANO}-002`, 'número automático');
+  confere((await p.textContent('#folha-orc')).includes(`Nº ${ANO}-002`), 'número não aparece na folha');
+});
+
+await teste('Orçamentos: "Gerar PDF" baixa o PDF com o número e o cliente no nome', async () => {
+  const [baixado] = await Promise.all([p.waitForEvent('download', { timeout: 15000 }), p.click('#pdf-orcamento')]);
+  igual(baixado.suggestedFilename(), `Orcamento-LOOK-${ANO}-002-Fusion-Soldas.pdf`, 'nome do arquivo');
+  const bytes = await readFile(await baixado.path());
+  confere(bytes.subarray(0, 5).toString() === '%PDF-', 'não é PDF');
+  confere(bytes.length > 20000, `PDF pequeno demais (${bytes.length} bytes): fontes não embutidas?`);
+  confere(bytes.includes('Anton'), 'fonte Anton não está no PDF');
+});
+
+await teste('Orçamentos: aprovado vai para o Caixa da LOOK como "a receber"', async () => {
+  igual(await p.locator('#lancar-orcamento').count(), 0, 'botão aparece antes de aprovar');
+  await p.selectOption('[name=status]', 'aprovado');
+  await p.click('#salvar-orcamento'); await p.waitForTimeout(150);
+  await p.click('#lancar-orcamento'); await p.waitForTimeout(150);
+  confere(await p.locator('#orc-no-caixa').count(), 'não avisou que está no caixa');
+  await ir('financas');
+  await p.click('[data-aba=empresa]'); await p.waitForTimeout(100);
+  const linha = p.locator('tr[data-id]', { hasText: `Orçamento ${ANO}-002` });
+  confere(await linha.count(), 'entrada não apareceu no caixa');
+  confere((await linha.textContent()).includes('A receber'), 'entrada não ficou "a receber"');
+  confere((await linha.textContent()).includes('1.350,00'), 'valor da entrada');
+  confere((await linha.textContent()).includes('Fusion Soldas'), 'entrada sem o cliente');
+  await p.click('[data-aba=pessoal]'); await p.waitForTimeout(80);
+});
+
+await teste('Orçamentos: duplicar ganha número novo e o original não muda', async () => {
+  await ir('orcamentos');
+  await p.click(`tr[data-id]:has-text("${ANO}-002")`);
+  await p.click('#duplicar-orcamento');
+  igual((await p.textContent('h1')).trim(), 'Novo orçamento', 'cópia não abriu');
+  igual(await p.locator('.item-orc').count(), 2, 'cópia sem os itens');
+  await p.fill('[name=titulo]', 'Logo + conteúdo (versão 2)');
+  await p.click('#salvar-orcamento'); await p.waitForTimeout(150);
+  igual((await p.textContent('h1')).trim(), `Orçamento ${ANO}-003`, 'número da cópia');
+  await p.click('#voltar-orcamentos'); await p.waitForTimeout(80);
+  confere((await p.textContent(`tr[data-id]:has-text("${ANO}-002")`)).includes('Aprovado'), 'original mudou');
+});
+
+await teste('Orçamentos: voltar com mudança sem salvar pede confirmação', async () => {
+  await p.click(`tr[data-id]:has-text("${ANO}-003")`);
+  await p.fill('[name=titulo]', 'Mudança que não vai ficar');
+  await p.click('#voltar-orcamentos');
+  confere(await p.locator('#form-orcamento').count(), 'saiu sem confirmar');
+  await p.click('#voltar-orcamentos'); await p.waitForTimeout(80);
+  confere(!(await p.textContent('#pagina')).includes('Mudança que não vai ficar'), 'mudança foi salva');
+});
+
+await teste('Orçamentos: texto com código não vira código na folha', async () => {
+  await p.click('#novo-orcamento');
+  await p.fill('[name=titulo]', '<img src=x data-xss onerror="window.__xss=1">');
+  await p.fill('[name=clienteEmpresa]', '<script>window.__xss=1</script>');
+  await p.waitForTimeout(100);
+  const achados = await p.evaluate(() => document.querySelectorAll('#folha-orc [data-xss], #folha-orc script').length + (window.__xss ? 1 : 0));
+  igual(achados, 0, 'elementos injetados');
+  await p.click('#voltar-orcamentos'); await p.click('#voltar-orcamentos'); await p.waitForTimeout(80);
+});
+
+await teste('Orçamentos: com "Comercial" só para ver, gerente abre mas não muda', async () => {
+  await ir('equipe');
+  await p.click('tr[data-id=u-marina]');
+  confere(await p.locator('tr[data-modulo=comercial]', { hasText: 'Comercial e orçamentos' }).count(), 'permissão não aparece na equipe');
+  await p.check('tr[data-modulo=comercial] [data-acao=ver]');
+  await p.click('#salvar'); await p.waitForTimeout(200);
+  await comoUsuario('u-marina');
+  confere((await menu()).includes('Orçamentos'), 'menu sem Orçamentos');
+  await ir('orcamentos');
+  igual(await p.locator('#novo-orcamento').count(), 0, 'pode criar só com "ver"');
+  await p.click(`tr[data-id]:has-text("${ANO}-001")`);
+  igual(await p.locator('#salvar-orcamento').count(), 0, 'pode salvar só com "ver"');
+  confere(await p.locator('[name=titulo]').isDisabled(), 'campo editável só com "ver"');
+  await p.click('#voltar-orcamentos'); await p.waitForTimeout(80);
+  await comoUsuario('u-pablo');
+  await ir('equipe');
+  await p.click('tr[data-id=u-marina]');
+  await p.uncheck('tr[data-modulo=comercial] [data-acao=ver]');
+  await p.click('#salvar'); await p.waitForTimeout(200);
+});
+
+// =====================================================================
 // CELULAR
 // =====================================================================
 await teste('Celular: telas cabem na largura (sem rolagem para o lado)', async () => {
   await comoUsuario('u-pablo');
   await p.setViewportSize({ width: 390, height: 844 });
-  for (const rota of ['visao-geral', 'clientes', 'projetos', 'financas']) {
+  for (const rota of ['visao-geral', 'clientes', 'projetos', 'financas', 'orcamentos']) {
     await ir(rota);
     const sobra = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     confere(sobra <= 1, `${rota} passa ${sobra}px da tela`);
   }
   await p.screenshot({ path: join(CAPTURAS, 'celular.png') });
+  await ir('orcamentos'); await p.click('tr[data-id]');
+  const sobraEditor = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  confere(sobraEditor <= 1, `editor de orçamento passa ${sobraEditor}px da tela`);
+  await p.screenshot({ path: join(CAPTURAS, 'celular-orcamento.png'), fullPage: true });
   await p.setViewportSize({ width: 1440, height: 2000 });
 });
 

@@ -12,6 +12,7 @@ import * as clientes from './views/clientes.js';
 import * as projetos from './views/projetos.js';
 import * as equipe from './views/equipe.js';
 import * as financas from './views/financas.js';
+import * as orcamentos from './views/orcamentos.js';
 import * as apresentacoes from './views/apresentacoes.js';
 import * as sobre from './views/sobre.js';
 
@@ -22,6 +23,7 @@ const ROTAS = [
   { rota: 'calendario', nome: 'Calendário', modulo: 'tarefas', icone: 'calendario', view: calendario },
   { rota: 'clientes', nome: 'Clientes', modulo: 'clientes', icone: 'clientes', view: clientes },
   { rota: 'projetos', nome: 'Projetos', modulo: 'projetos', icone: 'projetos', view: projetos },
+  { rota: 'orcamentos', nome: 'Orçamentos', modulo: 'comercial', icone: 'comercial', view: orcamentos },
   // Finanças abre para todos (a aba pessoal é de cada um); a aba Empresa segue a permissão "financeiro".
   { rota: 'financas', nome: 'Finanças', modulo: null, icone: 'financeiro', view: financas },
   { rota: 'apresentacoes', nome: 'Apresentações', modulo: null, icone: 'apresentacao', view: apresentacoes },

@@ -36,6 +36,9 @@ function traduzirErro(msg) {
   if (/lancamentos_tamanhos/i.test(msg)) return 'Preencha a descrição (até 200 letras).';
   if (/lancamentos_data/i.test(msg)) return 'Confira a data.';
   if (/lancamentos_nf/i.test(msg)) return 'Confira o número e o arquivo da nota fiscal.';
+  if (/orcamentos_tamanhos/i.test(msg)) return 'Orçamento grande demais: confira o título (até 200 letras) e a quantidade de itens.';
+  if (/orcamentos_totais/i.test(msg)) return 'Confira os valores do orçamento.';
+  if (/orcamentos_status/i.test(msg)) return 'Status de orçamento inválido.';
   if (/Failed to fetch|NetworkError/i.test(msg)) return 'Sem conexão com o servidor. Confira a internet e tente de novo.';
   return msg;
 }
