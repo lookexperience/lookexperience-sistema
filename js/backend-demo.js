@@ -117,7 +117,7 @@ function semente() {
   const orcamentos = [
     { id: novoId(), numero: `${ano}-001`, titulo: 'Identidade visual + conteúdo', status: 'enviado', cliente_id: 'c-ketlin', projeto_id: 'p-ketlin', lancamento_id: null,
       dados: { data: diaRelativo(-2), clienteEmpresa: 'Ketlin Joias', clienteNome: 'Ketlin', clienteContato: '', intro: '', itens, desconto: 0, descontoTipo: 'pct', validadeDias: 15,
-        pagamento: 'Pix ou cartão.', prazo: '', revisoes: '', incluso: '', naoIncluso: '', obs: '', mostrarAceite: true, responsavel: 'Pablo Caetano · LOOK', cnpj: '', contatoLook: '' },
+        pagamento: 'Pix ou cartão.', prazo: '', revisoes: '', incluso: '', naoIncluso: '', obs: '', mostrarAceite: true, responsavel: 'Pablo Caetano · LOOK', cnpj: '68.954.688/0001-82', contatoLook: '' },
       total_unico: 3000, total_mensal: 1599.99, criado_por: pablo, criado_em: agora, atualizado_em: agora },
   ];
   return { perfis, permissoes, clientes, projetos, tarefas, comentarios, avisos, anexos: [], briefings: [], lancamentos, notas: {}, orcamentos };

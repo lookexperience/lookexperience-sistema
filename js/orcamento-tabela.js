@@ -60,7 +60,7 @@ export const TEXTOS_PADRAO = {
   descontoTipo: 'pct',
   mostrarAceite: true,
   responsavel: 'Pablo Caetano · LOOK',
-  cnpj: '',
+  cnpj: '68.954.688/0001-82',
   contatoLook: '(14) 99733-2120 · contato@lookexperience.com.br · lookexperience.com.br · @look.experience',
 };
 
