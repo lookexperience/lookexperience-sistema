@@ -103,7 +103,7 @@ await teste('Site envia a política de segurança (CSP) do Netlify', async () =>
 });
 
 await teste('Admin: sistema abre e mostra o menu completo', async () => {
-  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Orçamentos', 'Finanças', 'Apresentações', 'Equipe e acessos'], 'menu');
+  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Orçamentos', 'Produtos', 'Fornecedores', 'Equipamentos', 'Finanças', 'Apresentações', 'Equipe e acessos'], 'menu');
 });
 
 for (const rota of ['visao-geral', 'atividades', 'calendario', 'clientes', 'projetos', 'financas', 'apresentacoes', 'equipe', 'sobre']) {
@@ -924,6 +924,11 @@ await teste('Finanças: admin libera "Financeiro da empresa" só para ver', asyn
 // ORÇAMENTOS (permissão "comercial")
 // =====================================================================
 const ANO = String(new Date().getFullYear());
+// Escolhe na lista da tabela de preços o item cujo texto começa com "nome ·".
+const escolherItem = (nome) => p.$eval('#item-da-tabela', (sel, n) => {
+  const o = [...sel.options].find((x) => x.textContent.startsWith(`${n} ·`));
+  sel.value = o.value; sel.dispatchEvent(new Event('change', { bubbles: true }));
+}, nome);
 
 await teste('Orçamentos: lista mostra o orçamento de exemplo com status e total', async () => {
   await comoUsuario('u-pablo');
@@ -943,8 +948,8 @@ await teste('Orçamentos: novo orçamento com cliente, itens da tabela e descont
   await p.fill('[name=titulo]', 'Logo + conteúdo mensal');
   await p.selectOption('[name=cliente_id]', 'c-fusion');
   igual(await p.inputValue('[name=clienteEmpresa]'), 'Fusion Soldas', 'cliente não preencheu a empresa');
-  await p.selectOption('#item-da-tabela', 'Marca|0'); await p.click('#add-item-tabela');
-  await p.selectOption('#item-da-tabela', 'Planos mensais|0'); await p.click('#add-item-tabela');
+  await escolherItem('Criação de logotipo'); await p.click('#add-item-tabela');
+  await escolherItem('Plano Inicial'); await p.click('#add-item-tabela');
   igual(await p.locator('.item-orc').count(), 2, 'itens não entraram');
   await p.fill('[name=desconto]', '10');
   igual(await reais('#orc-total-unico'), 'R$ 1.350,00', 'total único com desconto');
@@ -1034,12 +1039,134 @@ await teste('Orçamentos: com "Comercial" só para ver, gerente abre mas não mu
 });
 
 // =====================================================================
+// PRODUTOS, FORNECEDORES E EQUIPAMENTOS
+// =====================================================================
+await teste('Produtos: tabela de preços aparece por grupo', async () => {
+  await comoUsuario('u-pablo');
+  await ir('produtos');
+  confere(await p.locator('.grupo-produtos h2', { hasText: 'Planos mensais' }).count(), 'grupo Planos mensais');
+  const linha = p.locator('tr[data-id]', { hasText: 'Plano Inicial' });
+  confere((await linha.textContent()).replace(/\s/g, ' ').includes('R$ 1.599,99/mês'), 'preço do Plano Inicial');
+  await p.fill('#busca-produto', 'logotipo'); await p.waitForTimeout(350);
+  igual(await p.locator('tr[data-id]').count(), 1, 'busca de produto');
+  await p.fill('#busca-produto', ''); await p.waitForTimeout(350);
+});
+
+await teste('Produtos: novo produto e preço mudado aparecem no orçamento', async () => {
+  await ir('produtos');
+  await p.click('#novo-produto');
+  await p.fill('#form-ficha [name=descricao]', 'Teaser de lançamento');
+  await p.fill('#form-ficha [name=categoria]', 'Vídeo');
+  await p.fill('#form-ficha [name=unidade]', 'vídeo');
+  await p.fill('#form-ficha [name=valor]', '350,00');
+  await p.click('#salvar-ficha'); await p.waitForTimeout(200);
+  confere(await p.locator('tr[data-id]', { hasText: 'Teaser de lançamento' }).count(), 'produto novo não aparece');
+  await p.click('tr[data-id]:has-text("Criação de logotipo")');
+  await p.fill('#form-ficha [name=valor]', '1.800,00');
+  await p.click('#salvar-ficha'); await p.waitForTimeout(200);
+  await ir('orcamentos');
+  await p.click('#novo-orcamento');
+  const opcoes = (await p.locator('#item-da-tabela option').allTextContents()).map((t) => t.replace(/\s/g, ' '));
+  confere(opcoes.some((t) => t.startsWith('Teaser de lançamento · R$ 350,00')), 'produto novo não está no orçamento');
+  confere(opcoes.some((t) => t.startsWith('Criação de logotipo · R$ 1.800,00')), 'preço novo não está no orçamento');
+  await escolherItem('Teaser de lançamento'); await p.click('#add-item-tabela');
+  igual(await reais('#orc-total-unico'), 'R$ 350,00', 'total com o produto novo');
+  await p.click('#voltar-orcamentos'); await p.click('#voltar-orcamentos'); await p.waitForTimeout(80);
+});
+
+await teste('Produtos: tirar da tabela esconde do orçamento sem apagar', async () => {
+  await ir('produtos');
+  await p.click('tr[data-id]:has-text("Teaser de lançamento")');
+  await p.uncheck('#form-ficha [name=ativo]');
+  await p.click('#salvar-ficha'); await p.waitForTimeout(200);
+  igual(await p.locator('tr[data-id]', { hasText: 'Teaser de lançamento' }).count(), 0, 'item fora da tabela continua na lista');
+  await p.check('#ver-inativos'); await p.waitForTimeout(150);
+  confere(await p.locator('tr.inativo', { hasText: 'Teaser de lançamento' }).count(), 'item fora da tabela sumiu de vez');
+  await p.uncheck('#ver-inativos'); await p.waitForTimeout(150);
+  await ir('orcamentos'); await p.click('#novo-orcamento');
+  confere(!(await p.locator('#item-da-tabela option').allTextContents()).some((t) => t.startsWith('Teaser')), 'item fora da tabela aparece no orçamento');
+  await p.click('#voltar-orcamentos'); await p.waitForTimeout(80);
+});
+
+await teste('Fornecedores: cadastra, busca e filtra por categoria', async () => {
+  await ir('fornecedores');
+  await p.click('#novo-fornecedor');
+  await p.fill('#form-ficha [name=nome]', 'Brindes Ourinhos');
+  await p.fill('#form-ficha [name=categoria]', 'Brindes');
+  await p.fill('#form-ficha [name=telefone]', '(14) 99999-0000');
+  await p.click('#salvar-ficha'); await p.waitForTimeout(200);
+  confere(await p.locator('tr[data-id]', { hasText: 'Brindes Ourinhos' }).count(), 'fornecedor não aparece');
+  await p.selectOption('#filtro-categoria', 'Gráfica'); await p.waitForTimeout(150);
+  igual((await p.locator('tr[data-id] b').allTextContents()), ['Gráfica Exemplo'], 'filtro de categoria');
+  await p.selectOption('#filtro-categoria', ''); await p.waitForTimeout(150);
+  await p.fill('#busca-fornecedor', 'brindes'); await p.waitForTimeout(350);
+  igual(await p.locator('tr[data-id]').count(), 1, 'busca');
+  await p.fill('#busca-fornecedor', ''); await p.waitForTimeout(350);
+});
+
+await teste('Fornecedores: sem nome não salva', async () => {
+  await p.click('#novo-fornecedor');
+  await p.click('#salvar-ficha'); await p.waitForTimeout(100);
+  confere(await p.locator('#form-ficha').count(), 'janela fechou sem nome');
+  await fecharModal();
+});
+
+await teste('Equipamentos: mostra situação, com quem e onde está', async () => {
+  await ir('equipamentos');
+  igual((await p.textContent('#qtd-disponivel')).trim(), '2', 'disponíveis');
+  igual((await p.textContent('#qtd-em_uso')).trim(), '1', 'em uso');
+  const camera = await p.textContent('tr[data-id]:has-text("Câmera principal")');
+  confere(camera.includes('Em uso') && camera.includes('Rafa Exemplo') && camera.includes('Gravação na Lotus'), `câmera: ${camera}`);
+  await p.click('[data-filtro=manutencao]'); await p.waitForTimeout(100);
+  igual(await p.locator('tr[data-id]').count(), 1, 'filtro manutenção');
+  await p.click('[data-filtro=todos]'); await p.waitForTimeout(100);
+});
+
+await teste('Equipamentos: entregar para alguém marca "Em uso" e devolver tira a pessoa', async () => {
+  await p.click('tr[data-id]:has-text("Lente 24-70mm")');
+  await p.selectOption('#form-ficha [name=com_id]', 'u-marina');
+  igual(await p.inputValue('#form-ficha [name=status]'), 'em_uso', 'não marcou "Em uso"');
+  await p.fill('#form-ficha [name=local]', 'Gravação Flambé');
+  await p.click('#salvar-ficha'); await p.waitForTimeout(200);
+  confere((await p.textContent('tr[data-id]:has-text("Lente 24-70mm")')).includes('Marina Exemplo'), 'não ficou com a Marina');
+  igual((await p.textContent('#qtd-em_uso')).trim(), '2', 'em uso depois de entregar');
+  await p.click('tr[data-id]:has-text("Lente 24-70mm")');
+  await p.selectOption('#form-ficha [name=status]', 'disponivel');
+  await p.fill('#form-ficha [name=local]', 'Estúdio LOOK');
+  await p.click('#salvar-ficha'); await p.waitForTimeout(200);
+  const lente = await p.textContent('tr[data-id]:has-text("Lente 24-70mm")');
+  confere(!lente.includes('Marina') && lente.includes('Estúdio LOOK') && lente.includes('Disponível'), `lente: ${lente}`);
+});
+
+await teste('Equipamentos e fornecedores: gerente sem permissão não vê; com "ver" não muda', async () => {
+  await comoUsuario('u-marina');
+  confere(!(await menu()).some((m) => ['Produtos', 'Fornecedores', 'Equipamentos'].includes(m)), 'menu com telas sem permissão');
+  await comoUsuario('u-pablo');
+  await ir('equipe');
+  await p.click('tr[data-id=u-marina]');
+  await p.check('tr[data-modulo=equipamentos] [data-acao=ver]');
+  await p.click('#salvar'); await p.waitForTimeout(200);
+  await comoUsuario('u-marina');
+  confere((await menu()).includes('Equipamentos'), 'menu sem Equipamentos');
+  await ir('equipamentos');
+  igual(await p.locator('#novo-equipamento').count(), 0, 'pode criar só com "ver"');
+  await p.click('tr[data-id]:has-text("Câmera principal")');
+  igual(await p.locator('#salvar-ficha').count(), 0, 'pode salvar só com "ver"');
+  await fecharModal();
+  await comoUsuario('u-pablo');
+  await ir('equipe');
+  await p.click('tr[data-id=u-marina]');
+  await p.uncheck('tr[data-modulo=equipamentos] [data-acao=ver]');
+  await p.click('#salvar'); await p.waitForTimeout(200);
+});
+
+// =====================================================================
 // CELULAR
 // =====================================================================
 await teste('Celular: telas cabem na largura (sem rolagem para o lado)', async () => {
   await comoUsuario('u-pablo');
   await p.setViewportSize({ width: 390, height: 844 });
-  for (const rota of ['visao-geral', 'clientes', 'projetos', 'financas', 'orcamentos']) {
+  for (const rota of ['visao-geral', 'clientes', 'projetos', 'financas', 'orcamentos', 'produtos', 'fornecedores', 'equipamentos']) {
     await ir(rota);
     const sobra = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     confere(sobra <= 1, `${rota} passa ${sobra}px da tela`);

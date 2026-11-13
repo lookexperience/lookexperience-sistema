@@ -445,3 +445,23 @@ a.botao { text-decoration: none; display: inline-flex; align-items: center; }
   .item-orc .numeros-item { grid-template-columns: 60px 1fr 1fr; }
   .item-orc .numeros-item label.mensal { grid-column: 1 / -1; padding-bottom: 0; }
 }
+
+/* ---------- Produtos, fornecedores e equipamentos ---------- */
+label.marcar { display: flex; gap: 8px; align-items: center; text-transform: none; letter-spacing: 0; font-size: 14px; color: var(--texto-2); }
+.filtros label.marcar { min-width: 0; }
+.filtros input[type=search] { flex: 1 1 220px; max-width: 360px; }
+.lista-produtos { display: flex; flex-direction: column; gap: 14px; }
+.grupo-produtos h2 { margin-bottom: 6px; }
+.tabela.produtos tr.inativo td { opacity: .55; }
+.etiqueta.equip-disponivel { color: var(--preto); background: var(--latao); border-color: var(--latao); }
+.etiqueta.equip-em_uso { color: var(--osso); border-color: var(--osso); }
+.etiqueta.equip-manutencao { color: var(--perigo); border-color: var(--perigo); }
+.etiqueta.equip-indisponivel { color: var(--texto-3); border-style: dashed; }
+@media (max-width: 720px) {
+  .tabela.produtos, .tabela.fornecedores, .tabela.equipamentos { min-width: 0; }
+  .tabela.produtos th:nth-child(2), .tabela.produtos td:nth-child(2),
+  .tabela.fornecedores th:nth-child(4), .tabela.fornecedores td:nth-child(4), .tabela.fornecedores th:nth-child(2), .tabela.fornecedores td:nth-child(2),
+  .tabela.equipamentos th:nth-child(2), .tabela.equipamentos td:nth-child(2) { display: none; }
+  .tabela.produtos td, .tabela.fornecedores td, .tabela.equipamentos td { padding: 10px 6px; }
+}
+.filtros label.marcar input { min-width: 0; width: auto; }

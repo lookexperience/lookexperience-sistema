@@ -13,6 +13,9 @@ import * as projetos from './views/projetos.js';
 import * as equipe from './views/equipe.js';
 import * as financas from './views/financas.js';
 import * as orcamentos from './views/orcamentos.js';
+import * as produtos from './views/produtos.js';
+import * as fornecedores from './views/fornecedores.js';
+import * as equipamentos from './views/equipamentos.js';
 import * as apresentacoes from './views/apresentacoes.js';
 import * as sobre from './views/sobre.js';
 
@@ -24,6 +27,9 @@ const ROTAS = [
   { rota: 'clientes', nome: 'Clientes', modulo: 'clientes', icone: 'clientes', view: clientes },
   { rota: 'projetos', nome: 'Projetos', modulo: 'projetos', icone: 'projetos', view: projetos },
   { rota: 'orcamentos', nome: 'Orçamentos', modulo: 'comercial', icone: 'comercial', view: orcamentos },
+  { rota: 'produtos', nome: 'Produtos', modulo: 'comercial', icone: 'produtos', view: produtos },
+  { rota: 'fornecedores', nome: 'Fornecedores', modulo: 'fornecedores', icone: 'fornecedores', view: fornecedores },
+  { rota: 'equipamentos', nome: 'Equipamentos', modulo: 'equipamentos', icone: 'equipamentos', view: equipamentos },
   // Finanças abre para todos (a aba pessoal é de cada um); a aba Empresa segue a permissão "financeiro".
   { rota: 'financas', nome: 'Finanças', modulo: null, icone: 'financeiro', view: financas },
   { rota: 'apresentacoes', nome: 'Apresentações', modulo: null, icone: 'apresentacao', view: apresentacoes },

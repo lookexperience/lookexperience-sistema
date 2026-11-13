@@ -592,6 +592,57 @@ reset role;
 set role authenticated;
 select teste.como('00000000-0000-0000-0000-0000000000aa');
 
+-- ---------------------------------------------------------------------
+-- Produtos, fornecedores e equipamentos
+-- ---------------------------------------------------------------------
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+delete from permissoes where usuario_id = '00000000-0000-0000-0000-0000000000bb' and modulo = 'comercial';
+select teste.ok((select count(*) = 30 from produtos), 'Tabela de preços começa com os 30 itens do gerador (e não duplica ao rodar o schema de novo)');
+select teste.ok(teste.linhas($$insert into produtos (id, categoria, descricao, valor) values ('70000000-0000-0000-0000-000000000001', 'Vídeo', 'Teaser', 350)$$) = 1, 'Admin cria produto');
+select teste.ok(teste.linhas($$update produtos set valor = 380 where id = '70000000-0000-0000-0000-000000000001'$$) = 1, 'Admin muda o preço');
+select teste.ok(teste.linhas($$update produtos set valor = -1 where id = '70000000-0000-0000-0000-000000000001'$$) = -1, 'Preço negativo é recusado');
+select teste.ok(teste.linhas($$insert into produtos (descricao) values ('   ')$$) = -1, 'Produto sem descrição é recusado');
+select teste.ok(teste.linhas($$insert into fornecedores (id, nome, categoria, criado_por) values ('71000000-0000-0000-0000-000000000001', 'Gráfica Ourinhos', 'Gráfica', '00000000-0000-0000-0000-0000000000bb')$$) = 1, 'Admin cadastra fornecedor');
+select teste.ok((select criado_por = '00000000-0000-0000-0000-0000000000aa' from fornecedores where id = '71000000-0000-0000-0000-000000000001'), 'Autor do fornecedor é quem cadastrou (não dá para fingir outro)');
+select teste.ok(teste.linhas($$insert into fornecedores (nome) values ('')$$) = -1, 'Fornecedor sem nome é recusado');
+select teste.ok(teste.linhas($$insert into equipamentos (id, nome, categoria, status, com_id) values ('72000000-0000-0000-0000-000000000001', 'Sony FX30', 'Câmera', 'em_uso', '00000000-0000-0000-0000-0000000000cc')$$) = 1, 'Admin cadastra equipamento com um colaborador');
+select teste.ok(teste.linhas($$update equipamentos set status = 'sumiu' where id = '72000000-0000-0000-0000-000000000001'$$) = -1, 'Status de equipamento inventado é recusado');
+select teste.ok(teste.linhas($$update equipamentos set com_id = '99999999-0000-0000-0000-000000000000' where id = '72000000-0000-0000-0000-000000000001'$$) = -1, 'Equipamento só fica com alguém da equipe');
+select teste.ok(teste.linhas($$update equipamentos set status = 'disponivel', com_id = null, local = 'Estúdio' where id = '72000000-0000-0000-0000-000000000001'$$) = 1, 'Admin devolve o equipamento ao estúdio');
+
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok((select count(*) = 0 from produtos), 'Sem permissão comercial, não vê a tabela de preços');
+select teste.ok(teste.linhas($$update produtos set valor = 1$$) = 0, 'Sem permissão comercial, não muda preço');
+select teste.ok((select count(*) = 0 from fornecedores), 'Sem permissão, não vê fornecedores');
+select teste.ok(teste.linhas($$insert into fornecedores (nome) values ('x')$$) = -1, 'Sem permissão, não cadastra fornecedor');
+select teste.ok((select count(*) = 0 from equipamentos), 'Sem permissão, não vê equipamentos');
+select teste.ok(teste.linhas($$insert into equipamentos (nome) values ('x')$$) = -1, 'Sem permissão, não cadastra equipamento');
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+insert into permissoes values ('00000000-0000-0000-0000-0000000000bb', 'comercial', true, false, false, false, 'proprias'), ('00000000-0000-0000-0000-0000000000bb', 'equipamentos', true, false, true, false, 'proprias'), ('00000000-0000-0000-0000-0000000000bb', 'fornecedores', true, true, false, false, 'proprias');
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok((select count(*) = 31 from produtos), 'Com "comercial", vê a tabela de preços');
+select teste.ok(teste.linhas($$update produtos set valor = 1$$) = 0, 'Só com "ver", não muda preço');
+select teste.ok(teste.linhas($$delete from produtos$$) = 0, 'Só com "ver", não apaga produto');
+select teste.ok(teste.linhas($$update equipamentos set status = 'em_uso', com_id = '00000000-0000-0000-0000-0000000000bb' where id = '72000000-0000-0000-0000-000000000001'$$) = 1, 'Com "editar" em equipamentos, pega o equipamento');
+select teste.ok(teste.linhas($$insert into equipamentos (nome) values ('x')$$) = -1, 'Sem "criar", não cadastra equipamento');
+select teste.ok(teste.linhas($$delete from equipamentos$$) = 0, 'Sem "apagar", não apaga equipamento');
+select teste.ok(teste.linhas($$insert into fornecedores (nome) values ('Locadora de luz')$$) = 1, 'Com "criar", cadastra fornecedor');
+select teste.ok(teste.linhas($$update fornecedores set nome = 'x'$$) = 0, 'Sem "editar", não muda fornecedor');
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+delete from permissoes where usuario_id = '00000000-0000-0000-0000-0000000000bb' and modulo in ('comercial', 'equipamentos', 'fornecedores');
+select teste.ok(teste.linhas($$delete from fornecedores where id = '71000000-0000-0000-0000-000000000001'$$) = 1, 'Admin apaga fornecedor');
+select teste.ok(teste.linhas($$delete from produtos where id = '70000000-0000-0000-0000-000000000001'$$) = 1, 'Admin apaga produto');
+reset role;
+set role anon;
+select teste.como(null);
+select teste.ok(teste.linhas($$select * from produtos$$) = -1, 'Ataque: visitante sem login não lê a tabela de preços');
+select teste.ok(teste.linhas($$select * from fornecedores$$) = -1, 'Ataque: visitante sem login não lê fornecedores');
+select teste.ok(teste.linhas($$select * from equipamentos$$) = -1, 'Ataque: visitante sem login não lê equipamentos');
+reset role;
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+
 -- Visitante sem login chamando as funções do banco direto pela API
 reset role;
 set role anon;

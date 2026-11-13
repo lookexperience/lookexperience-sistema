@@ -7,6 +7,7 @@ import { pode } from '../permissoes.js';
 import { esc, $, $$, avisar, hoje, paraData } from '../util.js';
 import { TABELA, TEXTOS_PADRAO, itemDaTabela, plural, totaisOrcamento } from '../orcamento-tabela.js';
 import { dinheiro, lerValor } from './financas.js';
+import { agruparProdutos } from './produtos.js';
 
 export const STATUS_ORCAMENTO = [
   { chave: 'rascunho', nome: 'Rascunho' },
@@ -28,6 +29,8 @@ const novosDados = () => ({ ...structuredClone(TEXTOS_PADRAO), data: hoje(), cli
 // aberto enquanto a pessoa estiver nele.
 export async function render(el, ctx) {
   if (!$('.orc-editor', el)) tela.editando = null;
+  // A tabela de preços vem da tela Produtos; sem nenhum produto, usa a tabela padrão.
+  tela.produtos = await ctx.db().listar('produtos').catch(() => []);
   return tela.editando ? desenharEditor(el, ctx) : desenharLista(el, ctx);
 }
 
@@ -81,8 +84,11 @@ function desenharEditor(el, ctx) {
   const projetos = [...ctx.estado.projetos].sort((a, b) => a.nome.localeCompare(b.nome));
   const campo = (nome, rotulo, extra = '') => `<div class="campo"><label>${rotulo}</label><input type="text" name="${nome}" value="${esc(E[nome])}" ${extra} ${dis}></div>`;
   const texto = (nome, rotulo) => `<div class="campo inteiro"><label>${rotulo}</label><textarea name="${nome}" maxlength="3000" ${dis}>${esc(E[nome])}</textarea></div>`;
-  const opcoesTabela = Object.entries(TABELA).map(([cat, itens]) => `<optgroup label="${esc(cat)}">${itens.map((it, i) =>
-    `<option value="${esc(cat)}|${i}">${esc(it.d)} · ${it.valor ? dinheiro(it.valor) : 'sob consulta'}${it.mensal ? '/mês' : ''}</option>`).join('')}</optgroup>`).join('');
+  const ativos = (tela.produtos ?? []).filter((p) => p.ativo);
+  const opcao = (valor, d, v, mensal) => `<option value="${esc(valor)}">${esc(d)} · ${Number(v) ? dinheiro(v) : 'sob consulta'}${mensal ? '/mês' : ''}</option>`;
+  const opcoesTabela = ativos.length
+    ? agruparProdutos(ativos).map(([cat, itens]) => `<optgroup label="${esc(cat)}">${itens.map((p) => opcao(p.id, p.descricao, p.valor, p.mensal)).join('')}</optgroup>`).join('')
+    : Object.entries(TABELA).map(([cat, itens]) => `<optgroup label="${esc(cat)}">${itens.map((it, i) => opcao(`${cat}|${i}`, it.d, it.valor, it.mensal)).join('')}</optgroup>`).join('');
 
   el.innerHTML = `
     <div class="cabecalho"><div><div class="sobre">Orçamentos</div><h1>${novo ? 'Novo orçamento' : `Orçamento ${esc(ed.linha.numero)}`}</h1></div>
@@ -248,8 +254,11 @@ function desenharEditor(el, ctx) {
   $('#add-item-tabela', el)?.addEventListener('click', () => {
     const v = $('#item-da-tabela', el).value;
     if (!v) { $('#item-da-tabela', el).focus(); return; }
+    const p = ativos.find((x) => x.id === v);
     const [cat, i] = v.split('|');
-    ler(); E.itens.push(itemDaTabela(cat, Number(i))); mudou(true);
+    ler();
+    E.itens.push(p ? { cat: p.categoria, d: p.descricao, det: p.detalhe, u: p.unidade, q: 1, valor: Number(p.valor) || 0, mensal: !!p.mensal } : itemDaTabela(cat, Number(i)));
+    mudou(true);
     $('#item-da-tabela', el).value = '';
   });
   $('#add-item-livre', el)?.addEventListener('click', () => {

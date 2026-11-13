@@ -4,6 +4,7 @@ import { MODULOS } from './config.js';
 import { pode, podeVerTarefa, podeEditarTarefa, temAlgumAcesso, responsaveisDe } from './permissoes.js';
 import { chaveDia } from './util.js';
 import { conferirArquivo, novoIdAnexo } from './anexos.js';
+import { TABELA } from './orcamento-tabela.js';
 
 export const modo = 'demo';
 const CHAVE = 'look-sistema-demo-v4';
@@ -120,7 +121,31 @@ function semente() {
         pagamento: 'Pix ou cartão.', prazo: '', revisoes: '', incluso: '', naoIncluso: '', obs: '', mostrarAceite: true, responsavel: 'Pablo Caetano · LOOK', cnpj: '68.954.688/0001-82', contatoLook: '' },
       total_unico: 3000, total_mensal: 1599.99, criado_por: pablo, criado_em: agora, atualizado_em: agora },
   ];
-  return { perfis, permissoes, clientes, projetos, tarefas, comentarios, avisos, anexos: [], briefings: [], lancamentos, notas: {}, orcamentos };
+  return { perfis, permissoes, clientes, projetos, tarefas, comentarios, avisos, anexos: [], briefings: [], lancamentos, notas: {}, orcamentos, ...cadastrosIniciais(pablo, rafa, agora) };
+}
+
+// Produtos (a tabela de preços padrão), fornecedores e equipamentos de exemplo.
+function produtosIniciais(agora) {
+  let ordem = 0;
+  return Object.entries(TABELA).flatMap(([categoria, itens]) => itens.map((it) => ({
+    id: novoId(), categoria, descricao: it.d, detalhe: it.det, unidade: it.u, valor: it.valor, mensal: !!it.mensal, ativo: true, ordem: (ordem += 10), criado_em: agora, atualizado_em: agora })));
+}
+function cadastrosIniciais(pablo, rafa, agora) {
+  const f = (nome, categoria, extra = {}) => ({ id: novoId(), nome, categoria, contato: '', telefone: '', email: '', site: '', cidade: 'Ourinhos', observacoes: '', criado_por: pablo, criado_em: agora, ...extra });
+  const e = (nome, categoria, status, extra = {}) => ({ id: novoId(), nome, categoria, marca_modelo: '', numero_serie: '', status, com_id: null, local: '', observacoes: '', criado_em: agora, atualizado_em: agora, ...extra });
+  return {
+    produtos: produtosIniciais(agora),
+    fornecedores: [
+      f('Gráfica Exemplo', 'Gráfica', { contato: 'Atendimento', telefone: '(14) 0000-0000', observacoes: 'Cartão de visita 4x4 em 2 dias úteis.' }),
+      f('Locadora de Luz Exemplo', 'Locação de equipamento', { cidade: 'Marília' }),
+    ],
+    equipamentos: [
+      e('Câmera principal', 'Câmera', 'em_uso', { marca_modelo: 'Sony FX30', com_id: rafa, local: 'Gravação na Lotus' }),
+      e('Lente 24-70mm', 'Lente', 'disponivel', { local: 'Estúdio LOOK' }),
+      e('Microfone de lapela', 'Áudio', 'manutencao', { marca_modelo: 'Rode Wireless GO II', local: 'Assistência técnica' }),
+      e('Tripé de vídeo', 'Tripé e suporte', 'disponivel', { local: 'Estúdio LOOK' }),
+    ],
+  };
 }
 
 export async function iniciar() {
@@ -130,7 +155,7 @@ export async function iniciar() {
   } catch { /* sem armazenamento */ }
   for (const t of banco?.tarefas ?? []) t.responsaveis ??= t.responsavel_id ? [t.responsavel_id] : [];
   for (const p of banco?.projetos ?? []) p.briefing ??= 'dispensado';
-  if (banco) { banco.briefings ??= []; banco.lancamentos ??= []; banco.notas ??= {}; banco.orcamentos ??= []; }
+  if (banco) { banco.briefings ??= []; banco.lancamentos ??= []; banco.notas ??= {}; banco.orcamentos ??= []; banco.produtos ??= produtosIniciais(new Date().toISOString()); banco.fornecedores ??= []; banco.equipamentos ??= []; }
   if (!banco) { banco = semente(); usuarioAtual = 'u-pablo'; salvar(); }
 }
 
@@ -174,7 +199,9 @@ function visivel(tabela, linha, s) {
     case 'briefings': return pode(s, 'projetos', 'ver') && banco.projetos.some((p) => p.id === linha.projeto_id && visivel('projetos', p, s));
     // Pessoal: só o dono, nem o admin. Empresa: permissão "financeiro".
     case 'lancamentos': return linha.escopo === 'pessoal' ? linha.dono_id === eu && s.perfil.ativo : pode(s, 'financeiro', 'ver');
-    case 'orcamentos': return pode(s, 'comercial', 'ver');
+    case 'orcamentos': case 'produtos': return pode(s, 'comercial', 'ver');
+    case 'fornecedores': return pode(s, 'fornecedores', 'ver');
+    case 'equipamentos': return pode(s, 'equipamentos', 'ver');
     default: return false;
   }
 }
@@ -222,6 +249,23 @@ function conferirOrcamento(o, s) {
     || (o.lancamento_id && !(lanc && lanc.escopo === 'empresa' && visivel('lancamentos', lanc, s)))) negar();
 }
 
+// Produtos, fornecedores e equipamentos: módulo de cada um e os limites do banco.
+const MODULO_CADASTRO = { produtos: 'comercial', fornecedores: 'fornecedores', equipamentos: 'equipamentos' };
+function conferirCadastro(tabela, l) {
+  const curto = (v, n) => String(v ?? '').length <= n;
+  const preenchido = (v, n) => String(v ?? '').trim().length >= 1 && curto(v, n);
+  if (tabela === 'produtos') {
+    if (!preenchido(l.categoria, 60) || !preenchido(l.descricao, 200) || !curto(l.detalhe, 400) || !curto(l.unidade, 30)) throw new Error('Preencha o produto e o grupo (textos curtos).');
+    if (!(Number(l.valor) >= 0 && Number(l.valor) <= 1e9)) throw new Error('Confira o valor do produto.');
+  } else if (tabela === 'fornecedores') {
+    if (!preenchido(l.nome, 200)) throw new Error('Preencha o nome do fornecedor (textos curtos).');
+  } else {
+    if (!preenchido(l.nome, 200)) throw new Error('Preencha o nome do equipamento (textos curtos).');
+    if (!['disponivel', 'em_uso', 'manutencao', 'indisponivel'].includes(l.status)) throw new Error('Situação de equipamento inválida.');
+    if (l.com_id && !banco.perfis.some((p) => p.id === l.com_id)) throw new Error('Escolha alguém da equipe.');
+  }
+}
+
 const novoToken = () => Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
 
 function avisar(usuario_id, texto, tarefa_id, projeto_id = null) {
@@ -261,6 +305,13 @@ export async function inserir(tabela, dados) {
     conferirLancamento(linha, s);
     if (linha.escopo === 'pessoal' ? !s.perfil.ativo : !pode(s, 'financeiro', 'criar')) negar();
     Object.assign(linha, { dono_id: eu, atualizado_em: linha.criado_em });
+  } else if (MODULO_CADASTRO[tabela]) {
+    if (!pode(s, MODULO_CADASTRO[tabela], 'criar')) negar();
+    if (tabela === 'produtos') Object.assign(linha, { categoria: 'Outros', detalhe: '', unidade: 'un.', valor: 0, mensal: false, ativo: true, ordem: 0, ...dados });
+    if (tabela === 'equipamentos') Object.assign(linha, { categoria: '', marca_modelo: '', numero_serie: '', status: 'disponivel', com_id: null, local: '', observacoes: '', ...dados });
+    if (tabela === 'fornecedores') Object.assign(linha, { categoria: '', contato: '', telefone: '', email: '', site: '', cidade: '', observacoes: '', ...dados, criado_por: eu });
+    conferirCadastro(tabela, linha);
+    linha.atualizado_em = linha.criado_em;
   } else if (tabela === 'orcamentos') {
     if (!pode(s, 'comercial', 'criar') || linha.lancamento_id) negar();
     conferirOrcamento(linha, s);
@@ -311,6 +362,11 @@ export async function atualizar(tabela, id, mudancas) {
     const { dono_id: _d, escopo: _e, criado_em: _c, ...resto } = mudancas;
     mudancas = { ...resto, atualizado_em: new Date().toISOString() };
     conferirLancamento({ ...linha, ...mudancas }, s);
+  } else if (MODULO_CADASTRO[tabela]) {
+    if (!pode(s, MODULO_CADASTRO[tabela], 'editar')) negar();
+    const { criado_por: _p, criado_em: _c, ...resto } = mudancas;
+    mudancas = { ...resto, atualizado_em: new Date().toISOString() };
+    conferirCadastro(tabela, { ...linha, ...mudancas });
   } else if (tabela === 'orcamentos') {
     if (!pode(s, 'comercial', 'editar')) negar();
     const { numero: _n, criado_por: _p, criado_em: _c, ...resto } = mudancas;
@@ -333,6 +389,9 @@ export async function apagar(tabela, id) {
     briefings: () => pode(s, 'projetos', 'editar') && (linha.status === 'aguardando' || pode(s, 'projetos', 'apagar')),
     lancamentos: () => linha.escopo === 'pessoal' || pode(s, 'financeiro', 'apagar'),
     orcamentos: () => pode(s, 'comercial', 'apagar'),
+    produtos: () => pode(s, 'comercial', 'apagar'),
+    fornecedores: () => pode(s, 'fornecedores', 'apagar'),
+    equipamentos: () => pode(s, 'equipamentos', 'apagar'),
     comentarios: () => linha.autor_id === s.perfil.id || s.perfil.admin,
     avisos: () => true,
     perfis: () => s.perfil.admin && id !== s.perfil.id,
@@ -341,6 +400,7 @@ export async function apagar(tabela, id) {
   banco[tabela] = banco[tabela].filter((l) => l.id !== id);
   if (tabela === 'tarefas') banco.comentarios = banco.comentarios.filter((c) => c.tarefa_id !== id);
   if (tabela === 'perfis') banco.permissoes = banco.permissoes.filter((p) => p.usuario_id !== id);
+  if (tabela === 'perfis') banco.equipamentos.forEach((e) => { if (e.com_id === id) e.com_id = null; });
   // Igual ao banco: projeto sem cliente e tarefa sem projeto continuam existindo.
   if (tabela === 'clientes') banco.projetos.forEach((p) => { if (p.cliente_id === id) p.cliente_id = null; });
   if (tabela === 'projetos') banco.tarefas.forEach((t) => { if (t.projeto_id === id) t.projeto_id = null; });
