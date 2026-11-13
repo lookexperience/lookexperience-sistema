@@ -32,8 +32,9 @@ insert into public.modulos (chave, nome, fase, ordem) values
   ('comercial',    'Comercial e orçamentos', 1, 50),
   ('criacao',      'Criação',              3, 60),
   ('execucao',     'Execução',             3, 70),
+  ('fornecedores', 'Fornecedores',         1, 55),
   ('materiais',    'Banco de materiais',   3, 75),
-  ('equipamentos', 'Equipamentos',         3, 76),
+  ('equipamentos', 'Equipamentos',         1, 76),
   ('financeiro',   'Financeiro da empresa', 1, 80),
   ('horas',        'Registro de horas',    4, 85)
 on conflict (chave) do update set nome = excluded.nome, fase = excluded.fase, ordem = excluded.ordem;
@@ -318,6 +319,100 @@ select pg_temp.limite('orcamentos', 'orcamentos_status', $c$status in ('rascunho
 select pg_temp.limite('orcamentos', 'orcamentos_tamanhos', $c$char_length(titulo) <= 200 and jsonb_typeof(dados) = 'object' and pg_column_size(dados) <= 200000$c$);
 select pg_temp.limite('orcamentos', 'orcamentos_totais', 'total_unico between 0 and 1000000000 and total_mensal between 0 and 1000000000');
 select pg_temp.limite('orcamentos', 'orcamentos_numero', $c$numero ~ '^[0-9]{4}-[0-9]{3,6}$'$c$);
+
+-- ---------------------------------------------------------------------
+-- Produtos: a tabela de preços que os orçamentos usam (desde a 0.9.0).
+-- Segue a permissão "comercial". "mensal" soma num total mensal separado.
+-- ---------------------------------------------------------------------
+create table if not exists public.produtos (
+  id            uuid primary key default gen_random_uuid(),
+  categoria     text not null default 'Outros',
+  descricao     text not null,
+  detalhe       text not null default '',
+  unidade       text not null default 'un.',
+  valor         numeric(14,2) not null default 0,
+  mensal        boolean not null default false,
+  ativo         boolean not null default true,
+  ordem         integer not null default 0,
+  criado_em     timestamptz not null default now(),
+  atualizado_em timestamptz not null default now()
+);
+select pg_temp.limite('produtos', 'produtos_tamanhos', 'char_length(btrim(categoria)) between 1 and 60 and char_length(btrim(descricao)) between 1 and 200 and char_length(detalhe) <= 400 and char_length(unidade) <= 30');
+select pg_temp.limite('produtos', 'produtos_valor', 'valor between 0 and 1000000000');
+
+-- Primeira vez: a tabela começa com os itens do gerador de orçamento.
+insert into public.produtos (categoria, descricao, detalhe, unidade, valor, mensal, ordem)
+select * from (values
+  ('Vídeo', 'Vídeo curto (Reels / TikTok)', 'Até 60 s. Roteiro, captação, edição e legenda.', 'vídeo', 450, false, 10),
+  ('Vídeo', 'Edição de vídeo', 'Até 60 s, com material enviado pelo cliente.', 'vídeo', 200, false, 20),
+  ('Vídeo', 'Produção audiovisual completa', 'Roteiro, captação e edição de uma peça.', 'projeto', 800, false, 30),
+  ('Vídeo', 'Vídeo institucional', 'Até 3 min. Roteiro, captação em até 1 diária, edição, trilha e cor.', 'vídeo', 2500, false, 40),
+  ('Vídeo', 'Diária de captação', 'Até 8 h de gravação com equipamento LOOK.', 'diária', 1200, false, 50),
+  ('Vídeo', 'Meia diária de captação', 'Até 4 h de gravação com equipamento LOOK.', 'meia diária', 700, false, 60),
+  ('Vídeo', 'Cobertura de evento', 'Captação no evento + vídeo resumo de até 90 s.', 'evento', 1800, false, 70),
+  ('Vídeo', 'Vinheta / animação de logo', 'Motion de até 10 s para abrir e fechar vídeos.', 'vinheta', 600, false, 80),
+  ('Vídeo', 'Legenda em vídeo', 'Legenda sincronizada no padrão do cliente.', 'vídeo', 80, false, 90),
+  ('Artes', 'Post para feed', 'Arte única no formato do Instagram.', 'arte', 80, false, 100),
+  ('Artes', 'Carrossel', 'Até 5 lâminas.', 'carrossel', 180, false, 110),
+  ('Artes', 'Arte para stories', 'Formato 1080 x 1920.', 'arte', 50, false, 120),
+  ('Artes', 'Capa de Reels', 'Capa no padrão do perfil.', 'capa', 40, false, 130),
+  ('Artes', 'Flyer digital', 'Para redes sociais e WhatsApp.', 'arte', 120, false, 140),
+  ('Artes', 'Flyer impresso (arte)', 'Arte pronta para gráfica, A5 ou A4.', 'arte', 150, false, 150),
+  ('Artes', 'Banner / faixa (arte)', 'Arte pronta para gráfica no tamanho pedido.', 'arte', 200, false, 160),
+  ('Artes', 'Cardápio (arte)', 'Valor por página.', 'página', 150, false, 170),
+  ('Papelaria e impressos', 'Cartão de visita (arte)', 'Frente e verso, arquivo pronto para gráfica.', 'modelo', 180, false, 180),
+  ('Papelaria e impressos', 'Impressão de cartão de visita', 'Repasse da gráfica. Quantidade e papel a combinar.', 'lote', 0, false, 190),
+  ('Papelaria e impressos', 'Papel timbrado', 'Arquivo para Word e para impressão.', 'modelo', 120, false, 200),
+  ('Papelaria e impressos', 'Assinatura de e-mail', 'Com logo, contatos e ícones, instalada no e-mail.', 'assinatura', 150, false, 210),
+  ('Papelaria e impressos', 'Adesivo / etiqueta (arte)', 'Arte pronta para gráfica.', 'arte', 120, false, 220),
+  ('Marca', 'Criação de logotipo', 'Até 3 propostas e 2 rodadas de ajuste. Arquivos em vetor e PNG.', 'projeto', 1500, false, 230),
+  ('Marca', 'Identidade visual', 'Logo, paleta de cores, tipografia e aplicações principais.', 'projeto', 3000, false, 240),
+  ('Marca', 'Manual da marca', 'Regras de uso do logo, cores, fontes e exemplos.', 'projeto', 1200, false, 250),
+  ('Marca', 'Vetorização de logo', 'Redesenho em vetor de um logo existente.', 'logo', 150, false, 260),
+  ('Sites', 'Landing page', 'Página única com domínio, formulário e botão de WhatsApp.', 'site', 1800, false, 270),
+  ('Sites', 'Site institucional', 'Até 5 páginas.', 'site', 3500, false, 280),
+  ('Planos mensais', 'Plano Inicial', 'Conteúdo mensal para redes sociais.', 'mês', 1599.99, true, 290),
+  ('Planos mensais', 'Plano Essencial', 'Conteúdo mensal ampliado para redes sociais.', 'mês', 2399.99, true, 300)
+) as v(categoria, descricao, detalhe, unidade, valor, mensal, ordem)
+where not exists (select 1 from public.produtos);
+
+-- ---------------------------------------------------------------------
+-- Fornecedores (desde a 0.9.0). Permissão "fornecedores".
+-- ---------------------------------------------------------------------
+create table if not exists public.fornecedores (
+  id          uuid primary key default gen_random_uuid(),
+  nome        text not null,
+  categoria   text not null default '',
+  contato     text not null default '',
+  telefone    text not null default '',
+  email       text not null default '',
+  site        text not null default '',
+  cidade      text not null default '',
+  observacoes text not null default '',
+  criado_por  uuid references public.perfis(id) on delete set null default auth.uid(),
+  criado_em   timestamptz not null default now()
+);
+select pg_temp.limite('fornecedores', 'fornecedores_tamanhos', 'char_length(btrim(nome)) between 1 and 200 and char_length(categoria) <= 60 and char_length(contato) <= 200 and char_length(telefone) <= 60 and char_length(email) <= 320 and char_length(site) <= 300 and char_length(cidade) <= 120 and char_length(observacoes) <= 20000');
+
+-- ---------------------------------------------------------------------
+-- Equipamentos (desde a 0.9.0): o que a LOOK tem, se está disponível e
+-- com quem ou onde está. Permissão "equipamentos".
+-- ---------------------------------------------------------------------
+create table if not exists public.equipamentos (
+  id            uuid primary key default gen_random_uuid(),
+  nome          text not null,
+  categoria     text not null default '',
+  marca_modelo  text not null default '',
+  numero_serie  text not null default '',
+  status        text not null default 'disponivel',
+  com_id        uuid references public.perfis(id) on delete set null,
+  local         text not null default '',
+  observacoes   text not null default '',
+  criado_em     timestamptz not null default now(),
+  atualizado_em timestamptz not null default now()
+);
+select pg_temp.limite('equipamentos', 'equipamentos_status', $c$status in ('disponivel', 'em_uso', 'manutencao', 'indisponivel')$c$);
+select pg_temp.limite('equipamentos', 'equipamentos_tamanhos', 'char_length(btrim(nome)) between 1 and 200 and char_length(categoria) <= 60 and char_length(marca_modelo) <= 200 and char_length(numero_serie) <= 120 and char_length(local) <= 200 and char_length(observacoes) <= 20000');
 
 -- ---------------------------------------------------------------------
 -- Funções de permissão (usadas pelas políticas abaixo).
@@ -803,6 +898,31 @@ drop trigger if exists preparar_orcamento on public.orcamentos;
 create trigger preparar_orcamento before insert or update on public.orcamentos
   for each row execute function public.preparar_orcamento();
 
+-- Produtos e equipamentos guardam a data da última mudança.
+drop trigger if exists marcar_produto on public.produtos;
+create trigger marcar_produto before update on public.produtos
+  for each row execute function public.marcar_atualizacao();
+drop trigger if exists marcar_equipamento on public.equipamentos;
+create trigger marcar_equipamento before update on public.equipamentos
+  for each row execute function public.marcar_atualizacao();
+
+-- Fornecedor: autor é quem cadastrou e nunca muda.
+create or replace function public.preparar_fornecedor() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    if auth.uid() is not null then new.criado_por := auth.uid(); end if;
+    new.criado_em := now();
+  else
+    new.criado_por := old.criado_por;
+    new.criado_em := old.criado_em;
+  end if;
+  return new;
+end $$;
+drop trigger if exists preparar_fornecedor on public.fornecedores;
+create trigger preparar_fornecedor before insert or update on public.fornecedores
+  for each row execute function public.preparar_fornecedor();
+
 alter table public.modulos     enable row level security;
 alter table public.perfis      enable row level security;
 alter table public.permissoes  enable row level security;
@@ -815,10 +935,13 @@ alter table public.anexos      enable row level security;
 alter table public.briefings   enable row level security;
 alter table public.lancamentos enable row level security;
 alter table public.orcamentos  enable row level security;
+alter table public.produtos    enable row level security;
+alter table public.fornecedores enable row level security;
+alter table public.equipamentos enable row level security;
 
 do $$ declare r record; begin
   for r in select policyname, tablename from pg_policies where schemaname = 'public'
-    and tablename in ('modulos','perfis','permissoes','clientes','projetos','tarefas','comentarios','avisos','ajustes','anexos','briefings','lancamentos','orcamentos')
+    and tablename in ('modulos','perfis','permissoes','clientes','projetos','tarefas','comentarios','avisos','ajustes','anexos','briefings','lancamentos','orcamentos','produtos','fornecedores','equipamentos')
   loop execute format('drop policy %I on public.%I', r.policyname, r.tablename); end loop;
 end $$;
 
@@ -956,6 +1079,36 @@ create policy orcamentos_editar on public.orcamentos for update to authenticated
 create policy orcamentos_apagar on public.orcamentos for delete to authenticated
   using (public.pode('comercial', 'apagar'));
 
+-- Produtos (tabela de preços): permissão "comercial".
+create policy produtos_ler on public.produtos for select to authenticated
+  using (public.pode('comercial', 'ver'));
+create policy produtos_criar on public.produtos for insert to authenticated
+  with check (public.pode('comercial', 'criar'));
+create policy produtos_editar on public.produtos for update to authenticated
+  using (public.pode('comercial', 'editar')) with check (public.pode('comercial', 'editar'));
+create policy produtos_apagar on public.produtos for delete to authenticated
+  using (public.pode('comercial', 'apagar'));
+
+-- Fornecedores: permissão "fornecedores".
+create policy fornecedores_ler on public.fornecedores for select to authenticated
+  using (public.pode('fornecedores', 'ver'));
+create policy fornecedores_criar on public.fornecedores for insert to authenticated
+  with check (public.pode('fornecedores', 'criar'));
+create policy fornecedores_editar on public.fornecedores for update to authenticated
+  using (public.pode('fornecedores', 'editar')) with check (public.pode('fornecedores', 'editar'));
+create policy fornecedores_apagar on public.fornecedores for delete to authenticated
+  using (public.pode('fornecedores', 'apagar'));
+
+-- Equipamentos: permissão "equipamentos". "Com quem" precisa ser alguém da equipe.
+create policy equipamentos_ler on public.equipamentos for select to authenticated
+  using (public.pode('equipamentos', 'ver'));
+create policy equipamentos_criar on public.equipamentos for insert to authenticated
+  with check (public.pode('equipamentos', 'criar'));
+create policy equipamentos_editar on public.equipamentos for update to authenticated
+  using (public.pode('equipamentos', 'editar')) with check (public.pode('equipamentos', 'editar'));
+create policy equipamentos_apagar on public.equipamentos for delete to authenticated
+  using (public.pode('equipamentos', 'apagar'));
+
 -- Os arquivos em si (Storage) seguem a tabela de anexos: só se lê o arquivo
 -- cujo anexo a pessoa vê; só se envia para um caminho que ela mesma acabou
 -- de registrar; só se apaga o que ela pode apagar. Ninguém substitui arquivo.
@@ -1014,6 +1167,7 @@ grant execute on function public.briefing_enviar(text, jsonb) to anon;
 revoke execute on function public.preparar_briefing() from authenticated;
 revoke execute on function public.preparar_lancamento() from authenticated;
 revoke execute on function public.preparar_orcamento() from authenticated;
+revoke execute on function public.preparar_fornecedor() from authenticated;
 
 -- Avisa a API do Supabase para reler a estrutura (colunas e funções novas).
 notify pgrst, 'reload schema';

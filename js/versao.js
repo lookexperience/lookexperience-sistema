@@ -2,6 +2,19 @@
 // entrada no topo desta lista; a tela "Sobre o sistema" mostra tudo.
 export const HISTORICO = [
   {
+    versao: '0.9.0',
+    data: '2026-11-13',
+    titulo: 'Produtos, fornecedores e equipamentos',
+    itens: [
+      'Nova tela "Produtos": a tabela de preços dos orçamentos, para adicionar, mudar preço ou tirar itens sem mexer no código',
+      'Os orçamentos passam a usar os produtos dessa tela; mudar um preço vale para os próximos orçamentos e não altera os já feitos',
+      'Nova tela "Fornecedores": cadastro com categoria, contato, telefone, e-mail, site, cidade e observações, com busca e filtro',
+      'Nova tela "Equipamentos": o que a LOOK tem, se está disponível, em uso, em manutenção ou indisponível, e com quem ou onde está cada item',
+      'Novas permissões em Equipe e acessos: "Fornecedores" e "Equipamentos". Produtos segue a permissão "Comercial e orçamentos"',
+      'Clientes: paleta com 26 cores e um botão "+" para escolher qualquer outra cor',
+    ],
+  },
+  {
     versao: '0.8.1',
     data: '2026-11-13',
     titulo: 'Arrastar tarefas no quadro',

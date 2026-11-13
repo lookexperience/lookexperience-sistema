@@ -39,6 +39,12 @@ function traduzirErro(msg) {
   if (/orcamentos_tamanhos/i.test(msg)) return 'Orçamento grande demais: confira o título (até 200 letras) e a quantidade de itens.';
   if (/orcamentos_totais/i.test(msg)) return 'Confira os valores do orçamento.';
   if (/orcamentos_status/i.test(msg)) return 'Status de orçamento inválido.';
+  if (/produtos_tamanhos/i.test(msg)) return 'Preencha o produto e o grupo (textos curtos).';
+  if (/produtos_valor/i.test(msg)) return 'Confira o valor do produto.';
+  if (/fornecedores_tamanhos/i.test(msg)) return 'Preencha o nome do fornecedor (textos curtos).';
+  if (/equipamentos_tamanhos/i.test(msg)) return 'Preencha o nome do equipamento (textos curtos).';
+  if (/equipamentos_status/i.test(msg)) return 'Situação de equipamento inválida.';
+  if (/equipamentos_com_id_fkey/i.test(msg)) return 'Escolha alguém da equipe.';
   if (/Failed to fetch|NetworkError/i.test(msg)) return 'Sem conexão com o servidor. Confira a internet e tente de novo.';
   return msg;
 }

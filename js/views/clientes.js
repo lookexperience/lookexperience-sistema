@@ -3,7 +3,7 @@ import { esc, $, avisar } from '../util.js';
 import { abrirModal } from './modal.js';
 import { abrirProjeto } from './projetos.js';
 import { STATUS_PROJETO, nomeDe } from '../config.js';
-import { paletaCores, corCliente } from './comum.js';
+import { paletaCores, corCliente, ligarCorLivre } from './comum.js';
 
 export async function render(el, ctx) {
   const { estado } = ctx;
@@ -48,7 +48,8 @@ function abrirCliente(ctx, cliente) {
     rodape: `${!novo && pode(s, 'clientes', 'apagar') ? '<button class="botao perigo" id="apagar">Apagar</button>' : ''}<span class="espaco"></span>
       ${podeSalvar ? '<button class="botao primario" id="salvar">Salvar</button>' : ''}`,
   });
-  el.querySelectorAll('.amostra').forEach((b) => b.addEventListener('click', () => {
+  ligarCorLivre(el);
+  el.querySelectorAll('button.amostra').forEach((b) => b.addEventListener('click', () => {
     el.querySelectorAll('.amostra').forEach((x) => x.classList.toggle('escolhida', x === b));
   }));
   // Projeto aberto ou criado daqui volta para a ficha do cliente atualizada.

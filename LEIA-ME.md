@@ -69,6 +69,12 @@ A chave pública pode ficar no código. Quem protege os dados são as regras do 
 - **PDF**: sai pelo `js/vendor/pdf-orcamento.js` (cópia do gerador avulso) com o jsPDF 2.5.1 (`js/vendor/jspdf.umd.min.js`) e as fontes `.ttf` de `fonts/`. Tudo fica no próprio site, sem serviço de fora.
 - Orçamento **aprovado** ganha o botão **Lançar no caixa (a receber)** para quem também pode criar no Financeiro da empresa: cria a entrada no Caixa da LOOK (valor único; se só houver plano mensal, o primeiro mês) e liga ao orçamento.
 
+## Produtos, fornecedores e equipamentos
+
+- **Produtos** (tabela `produtos`, permissão **Comercial e orçamentos**): a tabela de preços que aparece em "Escolha um item da tabela" nos orçamentos. Na primeira vez que o schema roda, ela é preenchida com os itens de `js/orcamento-tabela.js`; depois disso, os preços mudam só pela tela. Um item fica no orçamento como foi escolhido, então mudar um preço não altera orçamentos já feitos. "Aparece na tabela" desmarcado tira o item da lista sem apagar.
+- **Fornecedores** (tabela `fornecedores`, permissão **Fornecedores**): nome, categoria, contato, telefone, e-mail, site, cidade e observações.
+- **Equipamentos** (tabela `equipamentos`, permissão **Equipamentos**): situação (disponível, em uso, em manutenção, indisponível), com quem está (alguém da equipe) e onde está. Voltar para "Disponível" tira a pessoa.
+
 ## Como fazer atualizações
 
 Toda mudança é feita no código, e só vai pro ar com os testes de `testes/` passando:
