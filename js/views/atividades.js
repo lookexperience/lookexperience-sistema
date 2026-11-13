@@ -34,6 +34,7 @@ function desenharQuadro(quadro, ctx) {
   const marcador = document.createElement('div');
   marcador.className = 'marcador-posicao';
   let arrastada = null;
+  const rolagem = rolagemDuranteArraste();
 
   quadro.querySelectorAll('.cartao[draggable]').forEach((c) => {
     c.addEventListener('dragstart', (e) => {
@@ -41,8 +42,9 @@ function desenharQuadro(quadro, ctx) {
       e.dataTransfer.setData('text/plain', arrastada);
       e.dataTransfer.effectAllowed = 'move';
       c.classList.add('arrastando');
+      rolagem.ligar();
     });
-    c.addEventListener('dragend', () => { c.classList.remove('arrastando'); marcador.remove(); arrastada = null; });
+    c.addEventListener('dragend', () => { c.classList.remove('arrastando'); marcador.remove(); arrastada = null; rolagem.desligar(); });
   });
 
   // Primeiro cartão da coluna cujo meio está abaixo do ponteiro: o arrastado entra antes dele.
@@ -60,6 +62,7 @@ function desenharQuadro(quadro, ctx) {
     col.addEventListener('dragleave', (e) => { if (!col.contains(e.relatedTarget)) { col.classList.remove('alvo'); marcador.remove(); } });
     col.addEventListener('drop', async (e) => {
       e.preventDefault();
+      rolagem.desligar();
       col.classList.remove('alvo');
       const t = ctx.estado.tarefas.find((x) => x.id === e.dataTransfer.getData('text/plain'));
       const depois = cartaoDepois(col, e.clientY);
@@ -84,4 +87,38 @@ function desenharQuadro(quadro, ctx) {
       } catch (err) { avisar(err.message); }
     });
   });
+}
+
+// Enquanto um cartão é arrastado, a página rola sozinha quando o ponteiro
+// chega perto do topo ou do fim da tela, e a roda do mouse também rola.
+// (Sem isso, um cartão do fim da coluna não alcançava as outras colunas.)
+const BORDA = 90; // px a partir da beirada da tela onde a rolagem começa
+const VELOCIDADE = 22; // px por quadro, no máximo
+function rolagemDuranteArraste() {
+  let y = null; let quadroAnim = 0; let ligada = false;
+  const aoArrastar = (e) => { if (e.clientY || e.clientX) y = e.clientY; };
+  const aoRodar = (e) => { window.scrollBy(0, e.deltaY); };
+  const passo = () => {
+    if (!ligada) return;
+    if (y !== null) {
+      const h = window.innerHeight;
+      const forca = y < BORDA ? -(BORDA - y) / BORDA : y > h - BORDA ? (y - (h - BORDA)) / BORDA : 0;
+      if (forca) window.scrollBy(0, Math.round(Math.max(-1, Math.min(1, forca)) * VELOCIDADE));
+    }
+    quadroAnim = requestAnimationFrame(passo);
+  };
+  return {
+    ligar() {
+      if (ligada) return;
+      ligada = true; y = null;
+      document.addEventListener('dragover', aoArrastar);
+      window.addEventListener('wheel', aoRodar, { passive: true });
+      quadroAnim = requestAnimationFrame(passo);
+    },
+    desligar() {
+      ligada = false; cancelAnimationFrame(quadroAnim);
+      document.removeEventListener('dragover', aoArrastar);
+      window.removeEventListener('wheel', aoRodar);
+    },
+  };
 }

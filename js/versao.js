@@ -2,6 +2,15 @@
 // entrada no topo desta lista; a tela "Sobre o sistema" mostra tudo.
 export const HISTORICO = [
   {
+    versao: '0.8.1',
+    data: '2026-11-13',
+    titulo: 'Arrastar tarefas no quadro',
+    itens: [
+      'Arrastando um cartão, a página rola sozinha quando o ponteiro chega perto do topo ou do fim da tela, e a roda do mouse também rola',
+      'As colunas do quadro (A fazer, Fazendo, Em aprovação, Feito) têm sempre a mesma altura: dá para soltar o cartão em qualquer ponto delas',
+    ],
+  },
+  {
     versao: '0.8.0',
     data: '2026-11-13',
     titulo: 'Orçamentos',

@@ -123,7 +123,8 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .vazio { padding: 28px; text-align: center; color: var(--texto-3); }
 
 /* ---------- Kanban ---------- */
-.kanban { display: grid; grid-template-columns: repeat(4, minmax(240px, 1fr)); gap: 14px; align-items: start; }
+/* Colunas sempre com a mesma altura (a da maior): dá para soltar um cartão em qualquer ponto delas. */
+.kanban { display: grid; grid-template-columns: repeat(4, minmax(240px, 1fr)); gap: 14px; align-items: stretch; }
 .coluna { background: var(--painel); border: 1px solid var(--linha); border-radius: var(--raio); padding: 12px; min-height: 300px; }
 .coluna.alvo { border-color: var(--latao); }
 .coluna-topo { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; padding: 2px 4px; }

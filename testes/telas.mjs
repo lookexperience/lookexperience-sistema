@@ -354,6 +354,38 @@ await teste('Admin: reordena cartões dentro da coluna e a ordem fica salva', as
   igual((await cartoes('a_fazer'))[0], antes[2], 'primeiro cartão depois de recarregar');
 });
 
+await teste('Admin: colunas do quadro têm a mesma altura (dá para soltar em qualquer ponto)', async () => {
+  await ir('atividades');
+  const alturas = await p.$$eval('.coluna', (cs) => cs.map((c) => Math.round(c.getBoundingClientRect().height)));
+  confere(new Set(alturas).size === 1, `alturas diferentes: ${alturas}`);
+});
+
+await teste('Admin: arrastando o último cartão, a tela rola sozinha e dá para soltar em Feito', async () => {
+  await p.setViewportSize({ width: 1440, height: 500 });
+  await ir('atividades');
+  const ultimo = p.locator('.coluna[data-status=a_fazer] .cartao').last();
+  const titulo = (await ultimo.locator('.titulo').textContent()).trim();
+  await ultimo.scrollIntoViewIfNeeded();
+  const antes = await p.evaluate(() => window.scrollY);
+  confere(antes > 200, `página não rolou para o fim (${antes})`);
+  const a = await ultimo.boundingBox();
+  await p.mouse.move(a.x + 40, a.y + 15); await p.mouse.down();
+  // Para perto do topo da tela: a página tem que subir sozinha.
+  const xFeito = (await p.locator('.coluna[data-status=feito]').boundingBox()).x + 60;
+  await p.mouse.move(xFeito, 30, { steps: 10 });
+  for (let i = 0; i < 12; i++) { await p.mouse.move(xFeito, 28 + (i % 2)); await p.waitForTimeout(50); }
+  const depois = await p.evaluate(() => window.scrollY);
+  confere(depois < antes - 150, `não rolou durante o arraste (${antes} → ${depois})`);
+  // A coluna Feito, mesmo com poucos cartões, vai até embaixo: solta no meio da tela.
+  await p.mouse.move(xFeito, 250, { steps: 4 }); await p.mouse.up();
+  await p.waitForTimeout(250);
+  await p.setViewportSize({ width: 1440, height: 2000 });
+  confere((await cartoes('feito')).includes(titulo), `"${titulo}" não foi para Feito`);
+  // Devolve o cartão para "A fazer", para os próximos testes.
+  await p.dragAndDrop(`.coluna[data-status=feito] .cartao:has-text("${titulo}")`, '.coluna[data-status=a_fazer]');
+  await p.waitForTimeout(250);
+});
+
 await teste('Admin: busca e filtros do quadro', async () => {
   await ir('atividades');
   await p.fill('#f-busca', 'cardápio'); await p.waitForTimeout(120);
