@@ -373,3 +373,74 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .nota-fiscal .arquivo-nota a { color: var(--latao); }
 .nota-fiscal input[type=file] { margin-top: 8px; }
 a.botao { text-decoration: none; display: inline-flex; align-items: center; }
+
+/* ---------- Orçamentos ---------- */
+.barra-orc { display: flex; gap: 8px; flex-wrap: wrap; }
+.valor-orc { text-align: right; white-space: nowrap; font-weight: 700; }
+.etiqueta.status-orc-enviado { color: var(--osso); border-color: var(--osso); }
+.etiqueta.status-orc-aprovado { color: var(--preto); background: var(--latao); border-color: var(--latao); }
+.etiqueta.status-orc-recusado { color: var(--texto-3); border-style: dashed; }
+.aviso-orc { background: var(--painel-2); border: 1px solid var(--latao); border-radius: var(--raio); padding: 10px 14px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.orc-editor { display: grid; grid-template-columns: minmax(380px, 480px) 1fr; gap: 20px; align-items: start; margin-top: 14px; }
+.orc-form { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.orc-form h2 { margin-bottom: 8px; }
+.orc-form input[type=number] { background: var(--painel); border: 1px solid var(--linha-forte); border-radius: 8px; padding: 9px 11px; width: 100%; }
+.orc-form textarea { min-height: 60px; }
+.item-orc { background: var(--painel-2); border: 1px solid var(--linha); border-radius: 8px; padding: 10px; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
+.item-orc .topo-item { display: flex; gap: 4px; align-items: center; }
+.item-orc .topo-item input { flex: 1; font-size: 12px; padding: 5px 8px; color: var(--texto-2); }
+.item-orc .numeros-item { display: grid; grid-template-columns: 70px 1fr 1fr auto; gap: 6px; align-items: end; }
+.item-orc .numeros-item label { font-size: 11px; color: var(--texto-3); display: flex; flex-direction: column; gap: 3px; }
+.item-orc .numeros-item label.mensal { flex-direction: row; align-items: center; gap: 5px; padding-bottom: 10px; white-space: nowrap; }
+.linha-add-item { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.linha-add-item select { flex: 1 1 220px; width: auto; }
+.orc-palco { position: sticky; top: 14px; overflow: auto; max-height: calc(100vh - 28px); background: #2a2a30; border-radius: var(--raio); padding: 16px; }
+@media (max-width: 1100px) { .orc-editor { grid-template-columns: 1fr; } .orc-palco { position: static; max-height: none; } }
+/* A folha: mesmo desenho do PDF, em tamanho A4 reduzido. */
+.folha-orc { width: 210mm; min-height: 297mm; margin: 0 auto; zoom: .62; background: #F5F3EE; color: #0A0A0C; font: 14px/1.35 var(--corpo); display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,.45); }
+@media (max-width: 1400px) { .folha-orc { zoom: .5; } }
+@media (max-width: 600px) { .folha-orc { zoom: .4; } }
+.folha-orc .cab { background: #0A0A0C; color: #F5F3EE; padding: 13mm 15mm 11mm; display: flex; justify-content: space-between; align-items: flex-end; gap: 10mm; }
+.folha-orc .cab img { height: 17mm; display: block; }
+.folha-orc .cab .tit { text-align: right; }
+.folha-orc .cab .tit b { display: block; font-family: var(--titulo); font-weight: 400; font-size: 40px; line-height: 1; letter-spacing: .03em; }
+.folha-orc .cab .tit small { display: block; margin-top: 10px; font-size: 11px; color: #c9c5bb; letter-spacing: .06em; text-transform: uppercase; }
+.folha-orc .filete { height: 1.2mm; background: #B8955A; }
+.folha-orc .corpo { padding: 8mm 15mm; flex: 1; }
+.folha-orc .dados { display: grid; grid-template-columns: 1.3fr 1.3fr 1fr; gap: 6mm; padding-bottom: 6mm; border-bottom: 1px solid #d9d5cb; }
+.folha-orc .rot { font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: #6b6860; margin-bottom: 3px; }
+.folha-orc .val { font-size: 13px; line-height: 1.35; }
+.folha-orc .val b { font-size: 14.5px; }
+.folha-orc .intro { margin: 6mm 0 2mm; font-size: 13px; line-height: 1.5; white-space: pre-line; }
+.folha-orc table { width: 100%; border-collapse: collapse; margin-top: 6mm; table-layout: fixed; }
+.folha-orc tr.gr td { font-family: var(--titulo); font-size: 14px; letter-spacing: .05em; text-transform: uppercase; padding: 4mm 0 1.2mm; border-bottom: 1px solid #0A0A0C; }
+.folha-orc th { font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: #6b6860; font-weight: 400; text-align: left; padding: 0 0 2mm; border-bottom: 1.5px solid #0A0A0C; }
+.folha-orc td { padding: 2mm 0; border-bottom: 1px solid #d9d5cb; vertical-align: top; font-size: 12.5px; }
+.folha-orc th.n, .folha-orc td.n { text-align: right; white-space: nowrap; padding-left: 4mm; }
+.folha-orc td .det { display: block; color: #6b6860; font-size: 11px; margin-top: 1px; line-height: 1.35; }
+.folha-orc .totais { margin: 5mm 0 0 auto; width: 85mm; }
+.folha-orc .totais .l { display: flex; justify-content: space-between; padding: 1.6mm 0; font-size: 12.5px; border-bottom: 1px solid #d9d5cb; }
+.folha-orc .totais .final { background: #0A0A0C; color: #F5F3EE; padding: 3mm 5mm; margin-top: 3mm; display: flex; justify-content: space-between; align-items: baseline; }
+.folha-orc .totais .final span { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: #B8955A; }
+.folha-orc .totais .final b { font-family: var(--titulo); font-weight: 400; font-size: 26px; letter-spacing: .02em; }
+.folha-orc .totais .final + .final { margin-top: 1.5mm; }
+.folha-orc .cond { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm 8mm; margin-top: 7mm; padding-top: 5mm; border-top: 1px solid #d9d5cb; }
+.folha-orc .cond .val { font-size: 12px; white-space: pre-line; line-height: 1.45; }
+.folha-orc .cond .cheio { grid-column: 1 / -1; }
+.folha-orc .aceite { display: grid; grid-template-columns: 1fr 1fr; gap: 12mm; margin-top: 13mm; }
+.folha-orc .aceite div { border-top: 1px solid #0A0A0C; padding-top: 2mm; font-size: 10.5px; color: #6b6860; }
+.folha-orc .rod { padding: 5mm 15mm; display: flex; align-items: center; gap: 4mm; border-top: 1px solid #d9d5cb; font-size: 10.5px; color: #6b6860; }
+.folha-orc .rod img { height: 7mm; }
+.folha-orc .rod .tag { margin-left: auto; font-family: var(--titulo); letter-spacing: .06em; font-size: 12px; color: #0A0A0C; text-transform: uppercase; }
+.folha-orc .sem-itens { color: #6b6860; font-style: italic; padding: 6mm 0; }
+.abas-orc { overflow-x: auto; scrollbar-width: none; }
+.abas-orc .aba { white-space: nowrap; padding: 10px 12px; }
+@media (max-width: 720px) {
+  .tabela.orcamentos { min-width: 0; }
+  .tabela.orcamentos th:nth-child(4), .tabela.orcamentos td:nth-child(4) { display: none; }
+  .tabela.orcamentos td { padding: 10px 6px; }
+  .orc-editor { grid-template-columns: minmax(0, 1fr); }
+  .orc-palco { padding: 8px; }
+  .item-orc .numeros-item { grid-template-columns: 60px 1fr 1fr; }
+  .item-orc .numeros-item label.mensal { grid-column: 1 / -1; padding-bottom: 0; }
+}

@@ -48,7 +48,7 @@ export const MODULOS = [
   { chave: 'tarefas', nome: 'Atividades e calendário', fase: 1 },
   { chave: 'clientes', nome: 'Clientes', fase: 1 },
   { chave: 'projetos', nome: 'Projetos', fase: 1 },
-  { chave: 'comercial', nome: 'Comercial', fase: 2 },
+  { chave: 'comercial', nome: 'Comercial e orçamentos', fase: 1 },
   { chave: 'criacao', nome: 'Criação', fase: 3 },
   { chave: 'execucao', nome: 'Execução', fase: 3 },
   { chave: 'materiais', nome: 'Banco de materiais', fase: 3 },

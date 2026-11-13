@@ -61,6 +61,14 @@ A chave pública pode ficar no código. Quem protege os dados são as regras do 
 - **Nota fiscal**: o botão **Emitir nota fiscal** abre o Emissor Nacional (`LINK_EMISSOR_NF` em `js/config.js`). Depois de emitir, anote o número e anexe o PDF (ou foto, até 5 MB) no lançamento. O arquivo fica no depósito privado `notas` do Supabase e só abre para quem vê o caixa da empresa. Entradas sem nota ganham a etiqueta "Sem nota".
 - Lançamento "a receber" ou "a pagar" (desmarcado em "Já recebi" ou "Já paguei") não entra no saldo até ser marcado.
 
+## Orçamentos
+
+- Tela **Orçamentos** no menu, para quem tem a permissão **Comercial e orçamentos** (ver, criar, editar e apagar separados). O administrador sempre vê.
+- O número (2026-001, 2026-002...) é dado pelo banco, em sequência por ano, e nunca muda. A folha inteira (cliente, itens, desconto, condições) fica na coluna `dados`; os totais ficam em colunas para a lista.
+- **Tabela de preços e textos padrão**: `js/orcamento-tabela.js`. É a mesma tabela do gerador avulso (`look/orcamentos/fonte/orcamento.html`): ao mudar um preço lá, mude aqui também.
+- **PDF**: sai pelo `js/vendor/pdf-orcamento.js` (cópia do gerador avulso) com o jsPDF 2.5.1 (`js/vendor/jspdf.umd.min.js`) e as fontes `.ttf` de `fonts/`. Tudo fica no próprio site, sem serviço de fora.
+- Orçamento **aprovado** ganha o botão **Lançar no caixa (a receber)** para quem também pode criar no Financeiro da empresa: cria a entrada no Caixa da LOOK (valor único; se só houver plano mensal, o primeiro mês) e liga ao orçamento.
+
 ## Como fazer atualizações
 
 Toda mudança é feita no código, e só vai pro ar com os testes de `testes/` passando:

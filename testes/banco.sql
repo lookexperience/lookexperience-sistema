@@ -555,6 +555,43 @@ reset role;
 set role authenticated;
 select teste.como('00000000-0000-0000-0000-0000000000aa');
 
+-- ---------------------------------------------------------------------
+-- Orçamentos (permissão "comercial")
+-- ---------------------------------------------------------------------
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.ok(teste.linhas($$insert into orcamentos (id, numero, titulo, cliente_id, dados, total_unico) values ('60000000-0000-0000-0000-000000000001', '1999-999', 'Rebranding', '10000000-0000-0000-0000-000000000001', '{"itens": []}', 3000)$$) = 1, 'Admin cria orçamento');
+select teste.ok((select numero = to_char(now() at time zone 'America/Sao_Paulo', 'YYYY') || '-001' and status = 'rascunho' from orcamentos where id = '60000000-0000-0000-0000-000000000001'), 'O banco dá o número do orçamento (não aceita um escolhido)');
+select teste.ok(teste.linhas($$insert into orcamentos (id, titulo) values ('60000000-0000-0000-0000-000000000002', 'Vídeos')$$) = 1, 'Segundo orçamento...');
+select teste.ok((select numero = to_char(now() at time zone 'America/Sao_Paulo', 'YYYY') || '-002' from orcamentos where id = '60000000-0000-0000-0000-000000000002'), '...ganha o número seguinte');
+update orcamentos set numero = '2000-001', status = 'enviado' where id = '60000000-0000-0000-0000-000000000001';
+select teste.ok((select numero = to_char(now() at time zone 'America/Sao_Paulo', 'YYYY') || '-001' and status = 'enviado' from orcamentos where id = '60000000-0000-0000-0000-000000000001'), 'Status muda, mas o número do orçamento nunca muda');
+select teste.ok(teste.linhas($$update orcamentos set status = 'perdido' where id = '60000000-0000-0000-0000-000000000001'$$) = -1, 'Status inventado é recusado');
+select teste.ok(teste.linhas($$update orcamentos set total_unico = -5 where id = '60000000-0000-0000-0000-000000000001'$$) = -1, 'Total negativo é recusado');
+select teste.ok(teste.linhas($$update orcamentos set lancamento_id = '50000000-0000-0000-0000-000000000004' where id = '60000000-0000-0000-0000-000000000001'$$) = -1, 'Ataque: orçamento não se liga a lançamento pessoal');
+select teste.ok(teste.linhas($$update orcamentos set status = 'aprovado', lancamento_id = '50000000-0000-0000-0000-000000000003' where id = '60000000-0000-0000-0000-000000000001'$$) = 1, 'Orçamento aprovado fica ligado à entrada no caixa da empresa');
+
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok((select count(*) = 0 from orcamentos), 'Sem permissão comercial, não vê orçamentos');
+select teste.ok(teste.linhas($$insert into orcamentos (titulo) values ('x')$$) = -1, 'Sem permissão comercial, não cria orçamento');
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+insert into permissoes values ('00000000-0000-0000-0000-0000000000bb', 'comercial', true, true, false, false, 'proprias');
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok((select count(*) = 2 from orcamentos), 'Com permissão comercial, vê os orçamentos');
+select teste.ok(teste.linhas($$insert into orcamentos (titulo) values ('Cardápio')$$) = 1, 'Com "criar", faz orçamento novo');
+select teste.ok(teste.linhas($$update orcamentos set status = 'recusado' where id = '60000000-0000-0000-0000-000000000002'$$) = 0, 'Sem "editar", não muda orçamento');
+select teste.ok(teste.linhas($$delete from orcamentos where id = '60000000-0000-0000-0000-000000000002'$$) = 0, 'Sem "apagar", não apaga orçamento');
+select teste.ok(teste.linhas($$insert into orcamentos (titulo, dados) values ('x', to_jsonb(repeat('a', 300000)))$$) = -1, 'Ataque: orçamento gigante é recusado');
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.ok(teste.linhas($$delete from orcamentos where id = '60000000-0000-0000-0000-000000000002'$$) = 1, 'Admin apaga orçamento');
+reset role;
+set role anon;
+select teste.como(null);
+select teste.ok(teste.linhas($$select * from orcamentos$$) = -1, 'Ataque: visitante sem login não lê orçamentos');
+reset role;
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+
 -- Visitante sem login chamando as funções do banco direto pela API
 reset role;
 set role anon;

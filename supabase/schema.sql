@@ -29,7 +29,7 @@ insert into public.modulos (chave, nome, fase, ordem) values
   ('clientes',     'Clientes',             1, 30),
   ('projetos',     'Projetos',             1, 40),
   ('equipe',       'Equipe e acessos',     1, 90),
-  ('comercial',    'Comercial',            2, 50),
+  ('comercial',    'Comercial e orçamentos', 1, 50),
   ('criacao',      'Criação',              3, 60),
   ('execucao',     'Execução',             3, 70),
   ('materiais',    'Banco de materiais',   3, 75),
@@ -290,6 +290,34 @@ insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 values ('notas', 'notas', false, 5242880, array['application/pdf', 'image/jpeg', 'image/png'])
 on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit,
   allowed_mime_types = excluded.allowed_mime_types;
+
+-- ---------------------------------------------------------------------
+-- Orçamentos (desde a versão 0.8.0). O número (2026-001, 2026-002...) é
+-- dado pelo banco, em sequência por ano. "dados" guarda a folha inteira
+-- (cliente, itens, desconto, condições); os totais ficam em colunas para
+-- a lista. Segue a permissão "comercial".
+-- ---------------------------------------------------------------------
+create table if not exists public.orcamentos (
+  id            uuid primary key default gen_random_uuid(),
+  numero        text not null unique,
+  cliente_id    uuid references public.clientes(id) on delete set null,
+  projeto_id    uuid references public.projetos(id) on delete set null,
+  titulo        text not null default '',
+  dados         jsonb not null default '{}'::jsonb,
+  status        text not null default 'rascunho',
+  total_unico   numeric(14,2) not null default 0,
+  total_mensal  numeric(14,2) not null default 0,
+  lancamento_id uuid references public.lancamentos(id) on delete set null,
+  criado_por    uuid references public.perfis(id) on delete set null default auth.uid(),
+  criado_em     timestamptz not null default now(),
+  atualizado_em timestamptz not null default now()
+);
+create index if not exists orcamentos_cliente_idx on public.orcamentos (cliente_id);
+
+select pg_temp.limite('orcamentos', 'orcamentos_status', $c$status in ('rascunho', 'enviado', 'aprovado', 'recusado')$c$);
+select pg_temp.limite('orcamentos', 'orcamentos_tamanhos', $c$char_length(titulo) <= 200 and jsonb_typeof(dados) = 'object' and pg_column_size(dados) <= 200000$c$);
+select pg_temp.limite('orcamentos', 'orcamentos_totais', 'total_unico between 0 and 1000000000 and total_mensal between 0 and 1000000000');
+select pg_temp.limite('orcamentos', 'orcamentos_numero', $c$numero ~ '^[0-9]{4}-[0-9]{3,6}$'$c$);
 
 -- ---------------------------------------------------------------------
 -- Funções de permissão (usadas pelas políticas abaixo).
@@ -750,6 +778,31 @@ drop trigger if exists preparar_lancamento on public.lancamentos;
 create trigger preparar_lancamento before insert or update on public.lancamentos
   for each row execute function public.preparar_lancamento();
 
+-- Orçamento: número em sequência por ano (horário de Brasília), autor e
+-- data de criação nunca mudam.
+create or replace function public.preparar_orcamento() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_ano text := to_char(now() at time zone 'America/Sao_Paulo', 'YYYY');
+begin
+  if tg_op = 'INSERT' then
+    perform pg_advisory_xact_lock(hashtext('look_orcamentos_numero'));
+    new.numero := v_ano || '-' || lpad((coalesce((select max(split_part(numero, '-', 2)::int) from orcamentos
+      where split_part(numero, '-', 1) = v_ano), 0) + 1)::text, 3, '0');
+    if auth.uid() is not null then new.criado_por := auth.uid(); end if;
+    new.criado_em := now();
+  else
+    new.numero := old.numero;
+    new.criado_por := old.criado_por;
+    new.criado_em := old.criado_em;
+  end if;
+  new.atualizado_em := now();
+  return new;
+end $$;
+
+drop trigger if exists preparar_orcamento on public.orcamentos;
+create trigger preparar_orcamento before insert or update on public.orcamentos
+  for each row execute function public.preparar_orcamento();
+
 alter table public.modulos     enable row level security;
 alter table public.perfis      enable row level security;
 alter table public.permissoes  enable row level security;
@@ -761,10 +814,11 @@ alter table public.avisos      enable row level security;
 alter table public.anexos      enable row level security;
 alter table public.briefings   enable row level security;
 alter table public.lancamentos enable row level security;
+alter table public.orcamentos  enable row level security;
 
 do $$ declare r record; begin
   for r in select policyname, tablename from pg_policies where schemaname = 'public'
-    and tablename in ('modulos','perfis','permissoes','clientes','projetos','tarefas','comentarios','avisos','ajustes','anexos','briefings','lancamentos')
+    and tablename in ('modulos','perfis','permissoes','clientes','projetos','tarefas','comentarios','avisos','ajustes','anexos','briefings','lancamentos','orcamentos')
   loop execute format('drop policy %I on public.%I', r.policyname, r.tablename); end loop;
 end $$;
 
@@ -884,6 +938,24 @@ create policy lancamentos_apagar on public.lancamentos for delete to authenticat
   using ((escopo = 'pessoal' and dono_id = auth.uid() and public.esta_ativo())
          or (escopo = 'empresa' and public.pode('financeiro', 'apagar')));
 
+-- Orçamentos: seguem a permissão "comercial". Cliente, projeto e lançamento
+-- ligados precisam ser os que a pessoa já enxerga.
+create policy orcamentos_ler on public.orcamentos for select to authenticated
+  using (public.pode('comercial', 'ver'));
+create policy orcamentos_criar on public.orcamentos for insert to authenticated
+  with check (public.pode('comercial', 'criar')
+              and (cliente_id is null or exists (select 1 from public.clientes c where c.id = cliente_id))
+              and (projeto_id is null or exists (select 1 from public.projetos p where p.id = projeto_id))
+              and lancamento_id is null);
+create policy orcamentos_editar on public.orcamentos for update to authenticated
+  using (public.pode('comercial', 'editar'))
+  with check (public.pode('comercial', 'editar')
+              and (cliente_id is null or exists (select 1 from public.clientes c where c.id = cliente_id))
+              and (projeto_id is null or exists (select 1 from public.projetos p where p.id = projeto_id))
+              and (lancamento_id is null or exists (select 1 from public.lancamentos l where l.id = lancamento_id and l.escopo = 'empresa')));
+create policy orcamentos_apagar on public.orcamentos for delete to authenticated
+  using (public.pode('comercial', 'apagar'));
+
 -- Os arquivos em si (Storage) seguem a tabela de anexos: só se lê o arquivo
 -- cujo anexo a pessoa vê; só se envia para um caminho que ela mesma acabou
 -- de registrar; só se apaga o que ela pode apagar. Ninguém substitui arquivo.
@@ -941,6 +1013,7 @@ grant execute on function public.briefing_enviar(text, jsonb) to anon;
 -- Funções internas dos gatilhos ficam fechadas.
 revoke execute on function public.preparar_briefing() from authenticated;
 revoke execute on function public.preparar_lancamento() from authenticated;
+revoke execute on function public.preparar_orcamento() from authenticated;
 
 -- Avisa a API do Supabase para reler a estrutura (colunas e funções novas).
 notify pgrst, 'reload schema';
