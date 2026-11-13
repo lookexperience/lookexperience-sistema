@@ -23,10 +23,27 @@ export function nomeClienteDaTarefa(ctx, t) {
 export const corCliente = (cliente) => (/^#[0-9a-f]{6}$/i.test(cliente?.cor ?? '') ? cliente.cor : COR_PADRAO);
 export const corDaTarefa = (ctx, t) => corCliente(ctx.cliente(ctx.projeto(t.projeto_id)?.cliente_id));
 
-// Paleta de cores clicável. "nome" identifica o grupo de botões.
-export const paletaCores = (atual, nome, desabilitado = false) => `<div class="paleta" data-paleta="${nome}">
-  ${CORES_CLIENTE.map((c) => `<button type="button" class="amostra ${c.chave === atual ? 'escolhida' : ''}" data-cor="${c.chave}" title="${c.nome}" style="--cor:${c.chave}" ${desabilitado ? 'disabled' : ''}></button>`).join('')}
+// Paleta de cores clicável. "nome" identifica o grupo de botões. A última
+// amostra (com o "+") abre o seletor de cor livre do navegador.
+export const paletaCores = (atual, nome, desabilitado = false) => {
+  const daLista = CORES_CLIENTE.some((c) => c.chave.toLowerCase() === String(atual).toLowerCase());
+  const livre = !daLista && /^#[0-9a-f]{6}$/i.test(atual ?? '') ? atual : '';
+  return `<div class="paleta" data-paleta="${nome}">
+  ${CORES_CLIENTE.map((c) => `<button type="button" class="amostra ${c.chave.toLowerCase() === String(atual).toLowerCase() ? 'escolhida' : ''}" data-cor="${c.chave}" title="${c.nome}" style="--cor:${c.chave}" ${desabilitado ? 'disabled' : ''}></button>`).join('')}
+  <label class="amostra livre ${livre ? 'escolhida' : ''}" data-cor="${livre}" title="Outra cor" style="--cor:${livre || 'transparent'}">
+    <input type="color" class="cor-livre" value="${livre || '#b8955a'}" aria-label="Escolher outra cor" ${desabilitado ? 'disabled' : ''}></label>
 </div>`;
+};
+
+// Cor escolhida no seletor livre vira a amostra "+" marcada.
+export function ligarCorLivre(raiz, aoEscolher) {
+  raiz.querySelectorAll('.cor-livre').forEach((inp) => inp.addEventListener('change', () => {
+    const amostra = inp.closest('.amostra');
+    amostra.dataset.cor = inp.value; amostra.style.setProperty('--cor', inp.value);
+    amostra.closest('.paleta').querySelectorAll('.amostra').forEach((x) => x.classList.toggle('escolhida', x === amostra));
+    aoEscolher?.(inp.value, amostra);
+  }));
+}
 
 export function quando(t) {
   if (t.inicio) return `${dataCurta(t.inicio)}, ${hora(t.inicio)}`;

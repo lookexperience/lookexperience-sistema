@@ -138,6 +138,17 @@ await teste('Admin: cria cliente com cor', async () => {
   confere(await p.locator('tr[data-id]', { hasText: 'Padaria Teste' }).count(), 'cliente não apareceu na lista');
 });
 
+await teste('Admin: cliente pode ter qualquer cor (paleta maior e cor livre)', async () => {
+  await p.click('tr[data-id]:has-text("Padaria Teste")');
+  confere(await p.locator('.modal button.amostra').count() >= 26, 'paleta com poucas cores');
+  await p.fill('.modal .cor-livre', '#123abc');
+  igual(await p.locator('.modal .amostra.escolhida').getAttribute('data-cor'), '#123abc', 'cor livre não ficou escolhida');
+  await p.click('#salvar'); await p.waitForTimeout(200);
+  await p.click('tr[data-id]:has-text("Padaria Teste")');
+  confere(await p.locator('.modal .amostra.livre.escolhida[data-cor="#123abc"]').count(), 'cor livre não foi salva');
+  await fecharModal();
+});
+
 await teste('Admin: cria projeto de dentro da ficha do cliente', async () => {
   await p.click('tr[data-id]:has-text("Padaria Teste")');
   await p.click('#novo-projeto');

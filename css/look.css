@@ -243,6 +243,11 @@ select { appearance: none; background-image: linear-gradient(45deg, transparent 
 .amostra:hover { transform: scale(1.1); }
 .amostra.escolhida { border-color: var(--osso); box-shadow: 0 0 0 2px var(--preto) inset; }
 .amostra:disabled { cursor: default; transform: none; }
+.amostra.livre { position: relative; display: inline-grid; place-items: center; border: 2px dashed var(--linha-forte); overflow: hidden; }
+.amostra.livre::after { content: '+'; color: var(--texto-2); font-size: 16px; line-height: 1; pointer-events: none; }
+.amostra.livre.escolhida { border-style: solid; }
+.amostra.livre.escolhida::after { content: ''; }
+.amostra.livre input { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; padding: 0; border: 0; }
 .cartao { border-left: 3px solid var(--cor-cliente, transparent); }
 .evento.post { box-shadow: inset 3px 0 0 var(--cor-cliente, var(--latao)); }
 

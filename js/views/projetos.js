@@ -4,7 +4,7 @@ import { esc, $, dataCurta, avisar, iniciais, estaAtrasada } from '../util.js';
 import { abrirModal, opcoes } from './modal.js';
 import { ACEITOS, ehImagem, tamanhoLegivel, rotuloTipo } from '../anexos.js';
 import { ligarBriefings, BRIEFING_PROJETO, etiquetaBriefing } from './briefing.js';
-import { filtros, paletaCores, corCliente, quando, ligarTarefas, avatares } from './comum.js';
+import { filtros, paletaCores, corCliente, quando, ligarTarefas, avatares, ligarCorLivre } from './comum.js';
 
 // O que cada pessoa deixou recolhido fica guardado neste computador.
 const chaveRecolhidos = (ctx) => `look-recolhidos-${ctx.estado.sessao.perfil.id}`;
@@ -100,10 +100,12 @@ export async function render(el, ctx) {
   el.querySelectorAll('[data-mudar-cor]').forEach((b) => b.addEventListener('click', () => {
     el.querySelector(`[data-paleta-de="${b.dataset.mudarCor}"]`).classList.toggle('oculto');
   }));
-  el.querySelectorAll('[data-paleta-de] .amostra').forEach((a) => a.addEventListener('click', async () => {
+  const salvarCor = async (a, cor) => {
     const id = a.closest('[data-paleta-de]').dataset.paletaDe;
-    try { await ctx.db().atualizar('clientes', id, { cor: a.dataset.cor }); await ctx.recarregar(); } catch (err) { avisar(err.message); }
-  }));
+    try { await ctx.db().atualizar('clientes', id, { cor }); await ctx.recarregar(); } catch (err) { avisar(err.message); }
+  };
+  el.querySelectorAll('[data-paleta-de] button.amostra').forEach((a) => a.addEventListener('click', () => salvarCor(a, a.dataset.cor)));
+  ligarCorLivre(el, (cor, a) => { if (a.closest('[data-paleta-de]')) salvarCor(a, cor); });
   el.querySelectorAll('[data-novo-para]').forEach((b) => b.addEventListener('click', () => abrirProjeto(ctx, null, b.dataset.novoPara)));
   el.querySelectorAll('tr[data-id]').forEach((tr) => tr.addEventListener('click', () => abrirProjeto(ctx, estado.projetos.find((p) => p.id === tr.dataset.id))));
   el.querySelectorAll('[data-quadro]').forEach((b) => b.addEventListener('click', (e) => {

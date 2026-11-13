@@ -11,6 +11,7 @@ export const HISTORICO = [
       'Nova tela "Fornecedores": cadastro com categoria, contato, telefone, e-mail, site, cidade e observações, com busca e filtro',
       'Nova tela "Equipamentos": o que a LOOK tem, se está disponível, em uso, em manutenção ou indisponível, e com quem ou onde está cada item',
       'Novas permissões em Equipe e acessos: "Fornecedores" e "Equipamentos". Produtos segue a permissão "Comercial e orçamentos"',
+      'Clientes: paleta com 26 cores e um botão "+" para escolher qualquer outra cor',
     ],
   },
   {

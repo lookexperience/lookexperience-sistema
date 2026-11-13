@@ -71,6 +71,22 @@ export const CORES_CLIENTE = [
   { chave: '#7A6BB5', nome: 'Violeta' },
   { chave: '#B5638F', nome: 'Vinho' },
   { chave: '#8C8C94', nome: 'Cinza' },
+  { chave: '#E04848', nome: 'Vermelho' },
+  { chave: '#E8732C', nome: 'Laranja' },
+  { chave: '#F2C230', nome: 'Amarelo' },
+  { chave: '#A6C93A', nome: 'Limão' },
+  { chave: '#3DAA5C', nome: 'Verde' },
+  { chave: '#2E7D5B', nome: 'Verde-escuro' },
+  { chave: '#3BB3C3', nome: 'Turquesa' },
+  { chave: '#5AA9E6', nome: 'Céu' },
+  { chave: '#2F55A4', nome: 'Azul-marinho' },
+  { chave: '#9B59D0', nome: 'Roxo' },
+  { chave: '#E05FA0', nome: 'Rosa' },
+  { chave: '#F29CB4', nome: 'Rosa-claro' },
+  { chave: '#8B5A3C', nome: 'Marrom' },
+  { chave: '#C8B89A', nome: 'Areia' },
+  { chave: '#F5F3EE', nome: 'Osso' },
+  { chave: '#5C5C66', nome: 'Grafite' },
 ];
 export const COR_PADRAO = '#8C8C94';
 
