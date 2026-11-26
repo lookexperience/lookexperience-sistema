@@ -1,9 +1,9 @@
 // Modo demonstração: guarda tudo neste navegador e imita as regras do
 // banco, para dar para testar o sistema antes do Supabase estar ligado.
-import { MODULOS } from './config.js';
+import { MODULOS, TIPOS_PECA, STATUS_PECA } from './config.js';
 import { pode, podeVerTarefa, podeEditarTarefa, temAlgumAcesso, responsaveisDe } from './permissoes.js';
 import { chaveDia } from './util.js';
-import { conferirArquivo, novoIdAnexo } from './anexos.js';
+import { conferirArquivo, novoIdAnexo, conferirArquivoPeca, conferirLinkPeca } from './anexos.js';
 import { TABELA } from './orcamento-tabela.js';
 
 export const modo = 'demo';
@@ -45,6 +45,7 @@ function semente() {
     permissao(marina, 'tarefas', true, true, true, false, 'setor'),
     permissao(marina, 'clientes', true, false, false, false),
     permissao(marina, 'projetos', true, true, true, false),
+    permissao(marina, 'criacao', true, true, true, false),
     permissao(rafa, 'visao_geral', true, false, false, false),
     permissao(rafa, 'tarefas', true, false, false, false, 'proprias'),
     permissao('u-saiu', 'tarefas', true, true, true, true, 'todas'),
@@ -121,7 +122,7 @@ function semente() {
         pagamento: 'Pix ou cartão.', prazo: '', revisoes: '', incluso: '', naoIncluso: '', obs: '', mostrarAceite: true, responsavel: 'Pablo Caetano · LOOK', cnpj: '68.954.688/0001-82', contatoLook: '' },
       total_unico: 3000, total_mensal: 1599.99, criado_por: pablo, criado_em: agora, atualizado_em: agora },
   ];
-  return { perfis, permissoes, clientes, projetos, tarefas, comentarios, avisos, anexos: [], briefings: [], lancamentos, notas: {}, orcamentos, ...cadastrosIniciais(pablo, rafa, agora) };
+  return { perfis, permissoes, clientes, projetos, tarefas, comentarios, avisos, anexos: [], briefings: [], lancamentos, notas: {}, orcamentos, ...cadastrosIniciais(pablo, rafa, agora), ...pecasIniciais(pablo, marina, agora) };
 }
 
 // Produtos (a tabela de preços padrão), fornecedores e equipamentos de exemplo.
@@ -148,6 +149,27 @@ function cadastrosIniciais(pablo, rafa, agora) {
   };
 }
 
+// Peças de exemplo da Criação. Na demonstração o arquivo é uma imagem do próprio sistema.
+function pecasIniciais(pablo, marina, agora) {
+  const pc = (id, projeto_id, titulo, tipo, status, extra = {}) => ({ id, projeto_id, titulo, tipo, status, descricao: '', responsavel_id: marina, prazo: diaRelativo(3),
+    token: novoToken(), criado_por: pablo, criado_em: agora, atualizado_em: agora, ...extra });
+  const v = (peca_id, numero, extra = {}) => ({ id: novoId(), peca_id, numero, caminho: null, link: '', nome: '', tipo: '', tamanho: 0, observacao: '',
+    resposta: 'aguardando', comentario_cliente: '', nome_cliente: '', respondido_em: null, enviado_por: marina, criado_em: agora, ...extra });
+  const caminho = 'pc-lotus-post/00000000-0000-4000-8000-000000000001.png';
+  return {
+    pecas: [
+      pc('pc-lotus-post', 'p-lotus', 'Post de lançamento da loja nova', 'post', 'em_aprovacao', { descricao: 'Arte do feed anunciando a inauguração.' }),
+      pc('pc-flambe-logo', 'p-flambe', 'Logo Flambé', 'logo', 'ajuste'),
+      pc('pc-fusion-site', 'p-fusion', 'Layout da landing page', 'site', 'em_criacao', { responsavel_id: pablo }),
+    ],
+    peca_versoes: [
+      v('pc-lotus-post', 1, { caminho, nome: 'post-lancamento.png', tipo: 'image/png', tamanho: 12000, observacao: 'Primeira proposta, com a paleta nova.' }),
+      v('pc-flambe-logo', 1, { link: 'https://drive.google.com/', observacao: 'Três caminhos de logo.', resposta: 'ajuste', comentario_cliente: 'Gostamos do caminho 2, mas com o vinho mais escuro.', nome_cliente: 'Sócios Flambé', respondido_em: agora }),
+    ],
+    arquivosPecas: { [caminho]: 'img/olho-preto.png' },
+  };
+}
+
 export async function iniciar() {
   try {
     const salvo = JSON.parse(localStorage.getItem(CHAVE) || 'null');
@@ -155,7 +177,7 @@ export async function iniciar() {
   } catch { /* sem armazenamento */ }
   for (const t of banco?.tarefas ?? []) t.responsaveis ??= t.responsavel_id ? [t.responsavel_id] : [];
   for (const p of banco?.projetos ?? []) p.briefing ??= 'dispensado';
-  if (banco) { banco.briefings ??= []; banco.lancamentos ??= []; banco.notas ??= {}; banco.orcamentos ??= []; banco.produtos ??= produtosIniciais(new Date().toISOString()); banco.fornecedores ??= []; banco.equipamentos ??= []; }
+  if (banco) { banco.briefings ??= []; banco.lancamentos ??= []; banco.notas ??= {}; banco.orcamentos ??= []; banco.produtos ??= produtosIniciais(new Date().toISOString()); banco.fornecedores ??= []; banco.equipamentos ??= []; banco.pecas ??= []; banco.peca_versoes ??= []; banco.arquivosPecas ??= {}; }
   if (!banco) { banco = semente(); usuarioAtual = 'u-pablo'; salvar(); }
 }
 
@@ -202,6 +224,7 @@ function visivel(tabela, linha, s) {
     case 'orcamentos': case 'produtos': return pode(s, 'comercial', 'ver');
     case 'fornecedores': return pode(s, 'fornecedores', 'ver');
     case 'equipamentos': return pode(s, 'equipamentos', 'ver');
+    case 'pecas': case 'peca_versoes': return pode(s, 'criacao', 'ver');
     default: return false;
   }
 }
@@ -266,6 +289,16 @@ function conferirCadastro(tabela, l) {
   }
 }
 
+// Mesmos limites do banco para as peças da Criação.
+function conferirPeca(pc, s) {
+  if (!String(pc.titulo ?? '').trim() || pc.titulo.length > 200 || (pc.descricao ?? '').length > 5000) throw new Error('Preencha o título da peça (até 200 letras).');
+  if (!TIPOS_PECA.some((t) => t.chave === pc.tipo) || !STATUS_PECA.some((t) => t.chave === pc.status)) throw new Error('Tipo ou situação de peça inválidos.');
+  if (pc.prazo && !/^\d{4}-\d{2}-\d{2}$/.test(pc.prazo)) throw new Error('Confira o prazo.');
+  if (pc.responsavel_id && !banco.perfis.some((p) => p.id === pc.responsavel_id)) throw new Error('Escolha alguém da equipe.');
+  const projeto = banco.projetos.find((p) => p.id === pc.projeto_id);
+  if (!projeto || !visivel('projetos', projeto, s)) negar();
+}
+
 const novoToken = () => Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
 
 function avisar(usuario_id, texto, tarefa_id, projeto_id = null) {
@@ -312,6 +345,10 @@ export async function inserir(tabela, dados) {
     if (tabela === 'fornecedores') Object.assign(linha, { categoria: '', contato: '', telefone: '', email: '', site: '', cidade: '', observacoes: '', ...dados, criado_por: eu });
     conferirCadastro(tabela, linha);
     linha.atualizado_em = linha.criado_em;
+  } else if (tabela === 'pecas') {
+    if (!pode(s, 'criacao', 'criar')) negar();
+    Object.assign(linha, { tipo: 'post', descricao: '', status: 'em_criacao', responsavel_id: null, prazo: null, ...dados, token: novoToken(), criado_por: eu, atualizado_em: linha.criado_em });
+    conferirPeca(linha, s);
   } else if (tabela === 'orcamentos') {
     if (!pode(s, 'comercial', 'criar') || linha.lancamento_id) negar();
     conferirOrcamento(linha, s);
@@ -367,6 +404,15 @@ export async function atualizar(tabela, id, mudancas) {
     const { criado_por: _p, criado_em: _c, ...resto } = mudancas;
     mudancas = { ...resto, atualizado_em: new Date().toISOString() };
     conferirCadastro(tabela, { ...linha, ...mudancas });
+  } else if (tabela === 'pecas') {
+    if (!pode(s, 'criacao', 'editar')) negar();
+    const { token: _t, criado_por: _p, criado_em: _c, ...resto } = mudancas;
+    mudancas = { ...resto, atualizado_em: new Date().toISOString() };
+    conferirPeca({ ...linha, ...mudancas }, s);
+  } else if (tabela === 'peca_versoes') {
+    // Igual ao banco: a equipe só muda a observação; a resposta é do cliente.
+    if (!pode(s, 'criacao', 'editar')) negar();
+    mudancas = 'observacao' in mudancas ? { observacao: String(mudancas.observacao).slice(0, 5000) } : {};
   } else if (tabela === 'orcamentos') {
     if (!pode(s, 'comercial', 'editar')) negar();
     const { numero: _n, criado_por: _p, criado_em: _c, ...resto } = mudancas;
@@ -392,6 +438,8 @@ export async function apagar(tabela, id) {
     produtos: () => pode(s, 'comercial', 'apagar'),
     fornecedores: () => pode(s, 'fornecedores', 'apagar'),
     equipamentos: () => pode(s, 'equipamentos', 'apagar'),
+    pecas: () => pode(s, 'criacao', 'apagar'),
+    peca_versoes: () => pode(s, 'criacao', 'apagar') || (linha.enviado_por === s.perfil.id && linha.resposta === 'aguardando'),
     comentarios: () => linha.autor_id === s.perfil.id || s.perfil.admin,
     avisos: () => true,
     perfis: () => s.perfil.admin && id !== s.perfil.id,
@@ -410,6 +458,14 @@ export async function apagar(tabela, id) {
   if (tabela === 'lancamentos') banco.orcamentos.forEach((o) => { if (o.lancamento_id === id) o.lancamento_id = null; });
   if (tabela === 'clientes') banco.orcamentos.forEach((o) => { if (o.cliente_id === id) o.cliente_id = null; });
   if (tabela === 'projetos') banco.orcamentos.forEach((o) => { if (o.projeto_id === id) o.projeto_id = null; });
+  // Igual ao banco: peça sai junto com o projeto; versões e arquivos saem junto com a peça.
+  const pecasFora = tabela === 'pecas' ? [id] : tabela === 'projetos' ? banco.pecas.filter((p) => p.projeto_id === id).map((p) => p.id) : [];
+  if (pecasFora.length) {
+    banco.pecas = banco.pecas.filter((p) => !pecasFora.includes(p.id));
+    banco.peca_versoes = banco.peca_versoes.filter((v) => { if (!pecasFora.includes(v.peca_id)) return true; delete banco.arquivosPecas[v.caminho]; return false; });
+    banco.avisos = banco.avisos.filter((a) => !pecasFora.includes(a.peca_id));
+  }
+  if (tabela === 'peca_versoes' && linha.caminho) delete banco.arquivosPecas[linha.caminho];
   salvar();
 }
 
@@ -535,6 +591,81 @@ export async function enviarBriefing(token, respostas) {
   const cliente = banco.clientes.find((c) => c.id === projeto?.cliente_id);
   for (const p of banco.perfis) {
     if (p.ativo && (p.admin || p.id === b.criado_por)) avisar(p.id, `Briefing recebido: ${cliente ? `${cliente.nome} · ` : ''}${projeto?.nome ?? ''}`, null, projeto?.id ?? null);
+  }
+  salvar();
+}
+
+// ---------- Criação: versões das peças (arquivo guardado neste navegador) ----------
+const lerComoDataUrl = (arquivo) => new Promise((ok, falhar) => {
+  const leitor = new FileReader();
+  leitor.onload = () => ok(leitor.result);
+  leitor.onerror = () => falhar(new Error('Não deu para ler o arquivo.'));
+  leitor.readAsDataURL(arquivo);
+});
+
+export function urlArquivoPeca(caminho) {
+  const guardado = banco.arquivosPecas?.[caminho];
+  if (!guardado) return '';
+  return guardado.startsWith('data:') ? URL.createObjectURL(blobDe(guardado)) : guardado;
+}
+
+export async function enviarVersaoPeca(pecaId, { arquivo, link, observacao = '' }) {
+  const s = await sessao();
+  const peca = banco.pecas.find((p) => p.id === pecaId);
+  if (!peca || !visivel('pecas', peca, s) || !(pode(s, 'criacao', 'criar') || pode(s, 'criacao', 'editar'))) negar();
+  const id = novoIdAnexo();
+  const versao = { id, peca_id: pecaId, caminho: null, link: '', nome: '', tipo: '', tamanho: 0, observacao: String(observacao).slice(0, 5000),
+    resposta: 'aguardando', comentario_cliente: '', nome_cliente: '', respondido_em: null, enviado_por: s.perfil.id, criado_em: new Date().toISOString(),
+    numero: Math.max(0, ...banco.peca_versoes.filter((v) => v.peca_id === pecaId).map((v) => v.numero)) + 1 };
+  if (arquivo) {
+    const { tipo, ext } = conferirArquivoPeca(arquivo);
+    if (arquivo.size > LIMITE_DEMO) throw new Error('Na demonstração o limite é 2 MB por arquivo (no sistema de verdade, 50 MB).');
+    Object.assign(versao, { caminho: `${pecaId}/${id}.${ext}`, nome: arquivo.name.slice(0, 255), tipo, tamanho: arquivo.size });
+    banco.arquivosPecas[versao.caminho] = await lerComoDataUrl(arquivo);
+  } else versao.link = conferirLinkPeca(link);
+  banco.peca_versoes.push(versao);
+  peca.status = 'em_aprovacao';
+  salvar();
+  return structuredClone(versao);
+}
+
+export async function apagarVersaoPeca(versao) {
+  await apagar('peca_versoes', versao.id);
+}
+
+// ---------- Aprovação da peça pelo link do cliente (sem login) ----------
+export async function abrirPeca(token) {
+  const pc = tokenValido(token) && (banco.pecas ?? []).find((x) => x.token === token);
+  if (!pc) return null;
+  const projeto = banco.projetos.find((p) => p.id === pc.projeto_id);
+  const cliente = banco.clientes.find((c) => c.id === projeto?.cliente_id);
+  const versoes = banco.peca_versoes.filter((v) => v.peca_id === pc.id).sort((a, b) => b.numero - a.numero)
+    .map(({ numero, caminho, link, nome, tipo, observacao, resposta, comentario_cliente, nome_cliente, respondido_em, criado_em }) =>
+      ({ numero, caminho, link, nome, tipo, observacao, resposta, comentario_cliente, nome_cliente, respondido_em, criado_em }));
+  return structuredClone({ titulo: pc.titulo, tipo: pc.tipo, descricao: pc.descricao, status: pc.status, cliente: cliente?.nome ?? '', projeto: projeto?.nome ?? '', versoes });
+}
+
+export async function responderPeca(token, resposta, comentario, nome) {
+  const pc = tokenValido(token) && (banco.pecas ?? []).find((x) => x.token === token);
+  if (!pc) throw new Error('Link de aprovação inválido.');
+  if (!['aprovada', 'ajuste'].includes(resposta)) throw new Error('Resposta inválida.');
+  const nomeLimpo = String(nome ?? '').trim();
+  if (!nomeLimpo || nomeLimpo.length > 120) throw new Error('Escreva seu nome (até 120 letras).');
+  if (String(comentario ?? '').length > 5000) throw new Error('Comentário grande demais (até 5 mil letras).');
+  if (resposta === 'ajuste' && !String(comentario ?? '').trim()) throw new Error('Conte o que precisa ajustar.');
+  const v = banco.peca_versoes.filter((x) => x.peca_id === pc.id).sort((a, b) => b.numero - a.numero)[0];
+  if (!v) throw new Error('Esta peça ainda não tem versão para aprovar.');
+  if (v.resposta !== 'aguardando') throw new Error('Esta versão já foi respondida. Obrigado!');
+  Object.assign(v, { resposta, comentario_cliente: comentario ?? '', nome_cliente: nomeLimpo, respondido_em: new Date().toISOString() });
+  pc.status = resposta;
+  const projeto = banco.projetos.find((p) => p.id === pc.projeto_id);
+  const cliente = banco.clientes.find((c) => c.id === projeto?.cliente_id);
+  const texto = `${resposta === 'aprovada' ? 'Cliente aprovou: ' : 'Cliente pediu ajuste em: '}${cliente ? `${cliente.nome} · ` : ''}${pc.titulo} (versão ${v.numero})`;
+  for (const p of banco.perfis) {
+    const ve = p.admin || banco.permissoes.some((x) => x.usuario_id === p.id && x.modulo === 'criacao' && x.ver);
+    if (p.ativo && ve && (p.admin || [pc.responsavel_id, pc.criado_por, v.enviado_por].includes(p.id))) {
+      banco.avisos.unshift({ id: novoId(), usuario_id: p.id, texto, tarefa_id: null, projeto_id: pc.projeto_id, peca_id: pc.id, lido: false, criado_em: new Date().toISOString() });
+    }
   }
   salvar();
 }

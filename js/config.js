@@ -36,6 +36,27 @@ export const TIPOS = [
   { chave: 'post', nome: 'Post' },
 ];
 
+// Criação: tipos de peça e por onde ela passa até o cliente aprovar.
+export const TIPOS_PECA = [
+  { chave: 'post', nome: 'Post' },
+  { chave: 'carrossel', nome: 'Carrossel' },
+  { chave: 'stories', nome: 'Stories' },
+  { chave: 'video', nome: 'Vídeo' },
+  { chave: 'logo', nome: 'Logo' },
+  { chave: 'identidade', nome: 'Identidade visual' },
+  { chave: 'roteiro', nome: 'Roteiro' },
+  { chave: 'apresentacao', nome: 'Apresentação' },
+  { chave: 'impresso', nome: 'Impresso' },
+  { chave: 'site', nome: 'Site' },
+  { chave: 'outro', nome: 'Outro' },
+];
+export const STATUS_PECA = [
+  { chave: 'em_criacao', nome: 'Em criação' },
+  { chave: 'em_aprovacao', nome: 'Com o cliente' },
+  { chave: 'ajuste', nome: 'Ajuste pedido' },
+  { chave: 'aprovada', nome: 'Aprovada' },
+];
+
 export const STATUS_PROJETO = [
   { chave: 'ativo', nome: 'Ativo' },
   { chave: 'pausado', nome: 'Pausado' },
@@ -50,7 +71,7 @@ export const MODULOS = [
   { chave: 'projetos', nome: 'Projetos', fase: 1 },
   { chave: 'comercial', nome: 'Comercial e orçamentos', fase: 1 },
   { chave: 'fornecedores', nome: 'Fornecedores', fase: 1 },
-  { chave: 'criacao', nome: 'Criação', fase: 3 },
+  { chave: 'criacao', nome: 'Criação', fase: 1 },
   { chave: 'execucao', nome: 'Execução', fase: 3 },
   { chave: 'materiais', nome: 'Banco de materiais', fase: 3 },
   { chave: 'equipamentos', nome: 'Equipamentos', fase: 1 },

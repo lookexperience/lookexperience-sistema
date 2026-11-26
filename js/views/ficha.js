@@ -8,9 +8,9 @@ import { lerValor } from './financas.js';
 
 const valorNoCampo = (v) => (v || v === 0 ? Number(v).toFixed(2).replace('.', ',') : '');
 
-// campos: [{ nome, rotulo, tipo: 'text'|'email'|'textarea'|'select'|'checkbox'|'valor', max, inteiro,
+// campos: [{ nome, rotulo, tipo: 'text'|'email'|'textarea'|'select'|'checkbox'|'valor'|'data', max, inteiro,
 //            obrigatorio, opcoes: [{ chave, nome }], vazio: 'texto da opção vazia', sugestoes: [...], dica }]
-export function abrirFicha(ctx, { tabela, modulo, titulo, campos, linha, padrao = {}, depois, salvo = 'Salvo', antesDeSalvar }) {
+export function abrirFicha(ctx, { tabela, modulo, titulo, campos, linha, padrao = {}, depois, salvo = 'Salvo', antesDeSalvar, largo = false, extra = '' }) {
   const s = ctx.estado.sessao;
   const novo = !linha;
   const r = linha ?? { ...padrao };
@@ -31,6 +31,7 @@ export function abrirFicha(ctx, { tabela, modulo, titulo, campos, linha, padrao 
         ${c.vazio !== undefined ? `<option value="">${esc(c.vazio)}</option>` : ''}
         ${c.opcoes.map((o) => `<option value="${esc(o.chave)}" ${o.chave === v ? 'selected' : ''}>${esc(o.nome)}</option>`).join('')}</select>${dica}</div>`;
     }
+    if (c.tipo === 'data') return `<div class="${classe}"><label>${c.rotulo}</label><input type="date" name="${c.nome}" value="${esc(v)}" ${dis}>${dica}</div>`;
     const lista = c.sugestoes ? `list="sug-${c.nome}"` : '';
     const valor = c.tipo === 'valor' ? valorNoCampo(v) : v;
     return `<div class="${classe}"><label>${c.rotulo}</label>
@@ -40,7 +41,8 @@ export function abrirFicha(ctx, { tabela, modulo, titulo, campos, linha, padrao 
 
   const { el, fechar } = abrirModal({
     titulo: novo ? titulo.novo : esc(titulo.de(r)),
-    corpo: `<form class="grade-campos" id="form-ficha">${campos.map(html).join('')}</form><div class="erro" id="erro-ficha"></div>`,
+    largo,
+    corpo: `<form class="grade-campos" id="form-ficha">${campos.map(html).join('')}</form><div class="erro" id="erro-ficha"></div>${extra}`,
     rodape: `${podeApagar ? '<button class="botao perigo" id="apagar-ficha">Apagar</button>' : ''}<span class="espaco"></span>
       ${podeSalvar ? '<button class="botao primario" id="salvar-ficha">Salvar</button>' : ''}`,
   });
@@ -59,14 +61,13 @@ export function abrirFicha(ctx, { tabela, modulo, titulo, campos, linha, padrao 
         const n = campo.value.trim() ? lerValor(campo.value) : 0;
         if (!Number.isFinite(n) || n < 0 || n >= 1e9) { erro.textContent = `Confira o campo "${c.rotulo}": use só números, como 1.250,00.`; campo.focus(); return; }
         dados[c.nome] = n;
-      } else if (c.tipo === 'select' && c.vazio !== undefined) dados[c.nome] = campo.value || null;
+      } else if ((c.tipo === 'select' && c.vazio !== undefined) || c.tipo === 'data') dados[c.nome] = campo.value || null;
       else dados[c.nome] = campo.value.trim();
     }
     try {
       antesDeSalvar?.(dados, r);
-      if (novo) await ctx.db().inserir(tabela, { ...padrao, ...dados });
-      else await ctx.db().atualizar(tabela, r.id, dados);
-      fechar(); avisar(salvo); await depois();
+      const salva = novo ? await ctx.db().inserir(tabela, { ...padrao, ...dados }) : await ctx.db().atualizar(tabela, r.id, dados);
+      fechar(); avisar(salvo); await depois(salva);
     } catch (err) { erro.textContent = err.message; }
   });
   $('#apagar-ficha', el)?.addEventListener('click', async (e) => {

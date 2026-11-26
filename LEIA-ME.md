@@ -75,6 +75,12 @@ A chave pública pode ficar no código. Quem protege os dados são as regras do 
 - **Fornecedores** (tabela `fornecedores`, permissão **Fornecedores**): nome, categoria, contato, telefone, e-mail, site, cidade e observações.
 - **Equipamentos** (tabela `equipamentos`, permissão **Equipamentos**): situação (disponível, em uso, em manutenção, indisponível), com quem está (alguém da equipe) e onde está. Voltar para "Disponível" tira a pessoa.
 
+## Criação e aprovação do cliente
+- Tela **Criação** (tabelas `pecas` e `peca_versoes`, permissão **Criação**): cada peça é de um projeto e passa por em criação → com o cliente → ajuste pedido → aprovada.
+- Cada versão é um arquivo (imagem, PDF ou vídeo até 50 MB, no depósito `pecas` do Storage) ou um link https (Google Drive, YouTube). O número da versão é dado pelo banco.
+- O cliente abre `aprovacao.html#código`, sem login. O código tem 64 letras e números sorteados pelo banco e só abre aquela peça. Ele responde só a última versão, uma vez, pelas funções `peca_abrir` e `peca_responder`; a equipe não consegue aprovar no lugar dele.
+- O depósito `pecas` é público para o cliente ver o arquivo sem login, mas cada arquivo tem nome sorteado e ninguém de fora lista o que tem dentro. O plano grátis do Supabase tem 1 GB de arquivos: vídeos pesados vão melhor como link.
+
 ## Como fazer atualizações
 
 Toda mudança é feita no código, e só vai pro ar com os testes de `testes/` passando:

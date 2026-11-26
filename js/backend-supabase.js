@@ -1,7 +1,7 @@
 // Modo online: conversa com o banco no Supabase. As regras de quem vê o
 // quê estão no próprio banco (supabase/schema.sql).
 import { CONFIG } from './config.js';
-import { conferirArquivo, novoIdAnexo } from './anexos.js';
+import { conferirArquivo, novoIdAnexo, conferirArquivoPeca, conferirLinkPeca } from './anexos.js';
 
 export const modo = 'online';
 let sb = null;
@@ -45,6 +45,11 @@ function traduzirErro(msg) {
   if (/equipamentos_tamanhos/i.test(msg)) return 'Preencha o nome do equipamento (textos curtos).';
   if (/equipamentos_status/i.test(msg)) return 'Situação de equipamento inválida.';
   if (/equipamentos_com_id_fkey/i.test(msg)) return 'Escolha alguém da equipe.';
+  if (/pecas_tamanhos/i.test(msg)) return 'Preencha o título da peça (até 200 letras).';
+  if (/pecas_tipo|pecas_status/i.test(msg)) return 'Tipo ou situação de peça inválidos.';
+  if (/pecas_prazo/i.test(msg)) return 'Confira o prazo.';
+  if (/peca_versoes_origem/i.test(msg)) return 'Envie um arquivo (imagem, PDF ou vídeo até 50 MB) ou um link https.';
+  if (/peca_versoes_tamanhos/i.test(msg)) return 'Observação grande demais (até 5 mil letras).';
   if (/Failed to fetch|NetworkError/i.test(msg)) return 'Sem conexão com o servidor. Confira a internet e tente de novo.';
   return msg;
 }
@@ -98,7 +103,11 @@ export async function apagar(tabela, id) {
   if (tabela === 'projetos') {
     const anexos = checar(await sb.from('anexos').select('caminho').eq('projeto_id', id));
     if (anexos.length) checar(await sb.storage.from('anexos').remove(anexos.map((a) => a.caminho)));
+    // Arquivos das peças do projeto (se a pessoa enxerga a Criação).
+    const { data: pecas } = await sb.from('pecas').select('id').eq('projeto_id', id);
+    if (pecas?.length) await removerArquivosPecas(pecas.map((p) => p.id));
   }
+  if (tabela === 'pecas') await removerArquivosPecas([id], true);
   const linhas = checar(await sb.from(tabela).delete().eq('id', id).select('id'));
   if (!linhas.length) throw new Error('Você não tem permissão para isso.');
 }
@@ -173,4 +182,60 @@ export async function abrirBriefing(token) {
 
 export async function enviarBriefing(token, respostas) {
   checar(await sb.rpc('briefing_enviar', { p_token: token, p_respostas: respostas }));
+}
+
+// ---------- Criação: versões das peças ----------
+// O depósito "pecas" é público para o cliente ver pelo link sem login, mas
+// cada arquivo tem nome sorteado e ninguém de fora lista o que tem dentro.
+const depositoPecas = () => sb.storage.from('pecas');
+
+export function urlArquivoPeca(caminho) {
+  return caminho ? depositoPecas().getPublicUrl(caminho).data.publicUrl : '';
+}
+
+async function removerArquivosPecas(pecaIds, obrigatorio = false) {
+  const { data, error } = await sb.from('peca_versoes').select('caminho').in('peca_id', pecaIds).not('caminho', 'is', null);
+  if (error) { if (obrigatorio) throw new Error(traduzirErro(error.message)); return; }
+  if (data.length) {
+    const r = await depositoPecas().remove(data.map((v) => v.caminho));
+    if (r.error && obrigatorio) throw new Error(traduzirErro(r.error.message));
+  }
+}
+
+// Registra a versão e depois envia o arquivo para a pasta da peça, com nome
+// sorteado. Se o envio falhar, desfaz o registro.
+export async function enviarVersaoPeca(pecaId, { arquivo, link, observacao = '' }) {
+  if (!arquivo) {
+    return checar(await sb.from('peca_versoes').insert({ peca_id: pecaId, link: conferirLinkPeca(link), observacao }).select().single());
+  }
+  const { tipo, ext } = conferirArquivoPeca(arquivo);
+  const id = novoIdAnexo();
+  const caminho = `${pecaId}/${id}.${ext}`;
+  const versao = checar(await sb.from('peca_versoes').insert({
+    id, peca_id: pecaId, caminho, nome: arquivo.name.slice(0, 255), tipo, tamanho: arquivo.size, observacao,
+  }).select().single());
+  const { error } = await depositoPecas().upload(caminho, arquivo, { contentType: tipo, upsert: false });
+  if (error) {
+    await sb.from('peca_versoes').delete().eq('id', id);
+    throw new Error(/exceeded the maximum allowed size|Payload too large/i.test(error.message)
+      ? 'Arquivo grande demais: o limite é 50 MB. Envie como link (Google Drive, YouTube).' : traduzirErro(error.message));
+  }
+  return versao;
+}
+
+export async function apagarVersaoPeca(versao) {
+  if (versao.caminho) {
+    const removidos = checar(await depositoPecas().remove([versao.caminho]));
+    if (!removidos?.length) throw new Error('Você não tem permissão para isso.');
+  }
+  await apagar('peca_versoes', versao.id);
+}
+
+// ---------- Aprovação da peça pelo link do cliente (sem login) ----------
+export async function abrirPeca(token) {
+  return checar(await sb.rpc('peca_abrir', { p_token: token }));
+}
+
+export async function responderPeca(token, resposta, comentario, nome) {
+  checar(await sb.rpc('peca_responder', { p_token: token, p_resposta: resposta, p_comentario: comentario, p_nome: nome }));
 }

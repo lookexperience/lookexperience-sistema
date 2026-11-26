@@ -30,7 +30,7 @@ insert into public.modulos (chave, nome, fase, ordem) values
   ('projetos',     'Projetos',             1, 40),
   ('equipe',       'Equipe e acessos',     1, 90),
   ('comercial',    'Comercial e orçamentos', 1, 50),
-  ('criacao',      'Criação',              3, 60),
+  ('criacao',      'Criação',              1, 60),
   ('execucao',     'Execução',             3, 70),
   ('fornecedores', 'Fornecedores',         1, 55),
   ('materiais',    'Banco de materiais',   3, 75),
@@ -413,6 +413,75 @@ create table if not exists public.equipamentos (
 );
 select pg_temp.limite('equipamentos', 'equipamentos_status', $c$status in ('disponivel', 'em_uso', 'manutencao', 'indisponivel')$c$);
 select pg_temp.limite('equipamentos', 'equipamentos_tamanhos', 'char_length(btrim(nome)) between 1 and 200 and char_length(categoria) <= 60 and char_length(marca_modelo) <= 200 and char_length(numero_serie) <= 120 and char_length(local) <= 200 and char_length(observacoes) <= 20000');
+
+-- ---------------------------------------------------------------------
+-- Criação (desde a 0.10.0): cada peça (post, vídeo, logo...) de um
+-- projeto, com as versões enviadas ao cliente. O cliente abre a peça por
+-- um link exclusivo (sem login), vê a última versão e aprova ou pede
+-- ajuste. Permissão "criacao".
+-- ---------------------------------------------------------------------
+create table if not exists public.pecas (
+  id             uuid primary key default gen_random_uuid(),
+  projeto_id     uuid not null references public.projetos(id) on delete cascade,
+  titulo         text not null,
+  tipo           text not null default 'post',
+  descricao      text not null default '',
+  status         text not null default 'em_criacao',
+  responsavel_id uuid references public.perfis(id) on delete set null,
+  prazo          date,
+  token          text not null unique,
+  criado_por     uuid references public.perfis(id) on delete set null default auth.uid(),
+  criado_em      timestamptz not null default now(),
+  atualizado_em  timestamptz not null default now()
+);
+create index if not exists pecas_projeto_idx on public.pecas (projeto_id);
+select pg_temp.limite('pecas', 'pecas_tamanhos', 'char_length(btrim(titulo)) between 1 and 200 and char_length(descricao) <= 5000');
+select pg_temp.limite('pecas', 'pecas_tipo', $c$tipo in ('post', 'carrossel', 'stories', 'video', 'logo', 'identidade', 'roteiro', 'apresentacao', 'impresso', 'site', 'outro')$c$);
+select pg_temp.limite('pecas', 'pecas_status', $c$status in ('em_criacao', 'em_aprovacao', 'ajuste', 'aprovada')$c$);
+select pg_temp.limite('pecas', 'pecas_token', $c$token ~ '^[0-9a-f]{64}$'$c$);
+select pg_temp.limite('pecas', 'pecas_prazo', $c$prazo is null or prazo between date '2000-01-01' and date '2100-12-31'$c$);
+
+-- Cada versão é um arquivo (imagem, PDF ou vídeo até 50 MB, no depósito
+-- "pecas") ou um link (Google Drive, YouTube...). O número (1, 2, 3...)
+-- é dado pelo banco. A resposta do cliente só muda pelo link dele.
+create table if not exists public.peca_versoes (
+  id                 uuid primary key default gen_random_uuid(),
+  peca_id            uuid not null references public.pecas(id) on delete cascade,
+  numero             integer not null,
+  caminho            text unique,
+  link               text not null default '',
+  nome               text not null default '',
+  tipo               text not null default '',
+  tamanho            bigint not null default 0,
+  observacao         text not null default '',
+  resposta           text not null default 'aguardando',
+  comentario_cliente text not null default '',
+  nome_cliente       text not null default '',
+  respondido_em      timestamptz,
+  enviado_por        uuid references public.perfis(id) on delete set null default auth.uid(),
+  criado_em          timestamptz not null default now(),
+  unique (peca_id, numero)
+);
+select pg_temp.limite('peca_versoes', 'peca_versoes_tamanhos', 'char_length(nome) <= 255 and char_length(observacao) <= 5000 and char_length(comentario_cliente) <= 5000 and char_length(nome_cliente) <= 120');
+select pg_temp.limite('peca_versoes', 'peca_versoes_resposta', $c$resposta in ('aguardando', 'aprovada', 'ajuste')$c$);
+-- Ou arquivo, ou link (só https), nunca os dois.
+select pg_temp.limite('peca_versoes', 'peca_versoes_origem', $c$(caminho is null) <> (link = '')
+  and (link = '' or (link ~ '^https://[^\s<>"]+$' and char_length(link) <= 1000))
+  and (caminho is null or (caminho ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}\.(jpg|png|webp|gif|pdf|mp4|webm|mov)$'
+       and split_part(caminho, '/', 1) = peca_id::text
+       and tamanho between 1 and 52428800
+       and tipo in ('image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'video/mp4', 'video/webm', 'video/quicktime')))$c$);
+
+-- Aviso de resposta do cliente abre a peça.
+alter table public.avisos add column if not exists peca_id uuid references public.pecas(id) on delete cascade;
+
+-- Depósito das peças: público para o cliente conseguir ver pelo link sem
+-- login, mas cada arquivo tem um nome sorteado (impossível de adivinhar)
+-- e ninguém de fora consegue listar o que tem dentro.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('pecas', 'pecas', true, 52428800, array['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'video/mp4', 'video/webm', 'video/quicktime'])
+on conflict (id) do update set public = true, file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
 
 -- ---------------------------------------------------------------------
 -- Funções de permissão (usadas pelas políticas abaixo).
@@ -923,6 +992,118 @@ drop trigger if exists preparar_fornecedor on public.fornecedores;
 create trigger preparar_fornecedor before insert or update on public.fornecedores
   for each row execute function public.preparar_fornecedor();
 
+-- Peça nova: o banco sorteia o link do cliente. Link, autor e data de
+-- criação nunca mudam.
+create or replace function public.preparar_peca() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    new.token := replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', '');
+    if auth.uid() is not null then new.criado_por := auth.uid(); end if;
+    new.criado_em := now();
+  else
+    new.token := old.token;
+    new.criado_por := old.criado_por;
+    new.criado_em := old.criado_em;
+  end if;
+  new.atualizado_em := now();
+  return new;
+end $$;
+drop trigger if exists preparar_peca on public.pecas;
+create trigger preparar_peca before insert or update on public.pecas
+  for each row execute function public.preparar_peca();
+
+-- Versão nova: número em sequência dentro da peça, nasce aguardando o
+-- cliente e a peça passa para "em aprovação". Depois, a equipe só muda a
+-- observação; a resposta só muda pela porta do cliente (peca_responder).
+create or replace function public.preparar_versao() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    perform pg_advisory_xact_lock(hashtext('look_peca_' || new.peca_id::text));
+    new.numero := coalesce((select max(numero) from peca_versoes where peca_id = new.peca_id), 0) + 1;
+    new.resposta := 'aguardando';
+    new.comentario_cliente := '';
+    new.nome_cliente := '';
+    new.respondido_em := null;
+    if auth.uid() is not null then new.enviado_por := auth.uid(); end if;
+    new.criado_em := now();
+    update pecas set status = 'em_aprovacao' where id = new.peca_id;
+    return new;
+  end if;
+  if current_setting('look.respondendo_peca', true) is distinct from 'sim' then
+    new.resposta := old.resposta; new.comentario_cliente := old.comentario_cliente;
+    new.nome_cliente := old.nome_cliente; new.respondido_em := old.respondido_em;
+  end if;
+  new.id := old.id; new.peca_id := old.peca_id; new.numero := old.numero; new.caminho := old.caminho;
+  new.link := old.link; new.nome := old.nome; new.tipo := old.tipo; new.tamanho := old.tamanho;
+  new.enviado_por := old.enviado_por; new.criado_em := old.criado_em;
+  return new;
+end $$;
+drop trigger if exists preparar_versao on public.peca_versoes;
+create trigger preparar_versao before insert or update on public.peca_versoes
+  for each row execute function public.preparar_versao();
+
+-- Portas do cliente para a peça (sem login). Só funcionam com o link
+-- certo e só mostram aquela peça e as versões dela.
+create or replace function public.peca_abrir(p_token text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'titulo', pc.titulo,
+    'tipo', pc.tipo,
+    'descricao', pc.descricao,
+    'status', pc.status,
+    'cliente', coalesce(c.nome, ''),
+    'projeto', p.nome,
+    'versoes', coalesce((select jsonb_agg(jsonb_build_object(
+        'numero', v.numero, 'caminho', v.caminho, 'link', v.link, 'nome', v.nome, 'tipo', v.tipo,
+        'observacao', v.observacao, 'resposta', v.resposta, 'comentario_cliente', v.comentario_cliente,
+        'nome_cliente', v.nome_cliente, 'respondido_em', v.respondido_em, 'criado_em', v.criado_em) order by v.numero desc)
+      from peca_versoes v where v.peca_id = pc.id), '[]'::jsonb))
+  from pecas pc
+  join projetos p on p.id = pc.projeto_id
+  left join clientes c on c.id = p.cliente_id
+  where coalesce(p_token, '') ~ '^[0-9a-f]{64}$' and pc.token = p_token;
+$$;
+
+create or replace function public.peca_responder(p_token text, p_resposta text, p_comentario text, p_nome text) returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  v_peca pecas%rowtype;
+  v_versao peca_versoes%rowtype;
+  v_cliente text;
+begin
+  if coalesce(p_token, '') !~ '^[0-9a-f]{64}$' then raise exception 'Link de aprovação inválido.'; end if;
+  select * into v_peca from pecas where token = p_token for update;
+  if not found then raise exception 'Link de aprovação inválido.'; end if;
+  if p_resposta is null or p_resposta not in ('aprovada', 'ajuste') then raise exception 'Resposta inválida.'; end if;
+  if char_length(btrim(coalesce(p_nome, ''))) not between 1 and 120 then raise exception 'Escreva seu nome (até 120 letras).'; end if;
+  if char_length(coalesce(p_comentario, '')) > 5000 then raise exception 'Comentário grande demais (até 5 mil letras).'; end if;
+  if p_resposta = 'ajuste' and btrim(coalesce(p_comentario, '')) = '' then raise exception 'Conte o que precisa ajustar.'; end if;
+  select * into v_versao from peca_versoes where peca_id = v_peca.id order by numero desc limit 1;
+  if not found then raise exception 'Esta peça ainda não tem versão para aprovar.'; end if;
+  if v_versao.resposta <> 'aguardando' then raise exception 'Esta versão já foi respondida. Obrigado!'; end if;
+
+  perform set_config('look.respondendo_peca', 'sim', true);
+  update peca_versoes set resposta = p_resposta, comentario_cliente = coalesce(p_comentario, ''),
+    nome_cliente = btrim(p_nome), respondido_em = now() where id = v_versao.id;
+  perform set_config('look.respondendo_peca', '', true);
+  update pecas set status = p_resposta where id = v_peca.id;
+  select c.nome into v_cliente from projetos p join clientes c on c.id = p.cliente_id where p.id = v_peca.projeto_id;
+
+  -- Avisa quem cuida da peça (responsável, quem criou, quem enviou a
+  -- versão) e os administradores, desde que vejam a Criação.
+  insert into avisos (usuario_id, texto, projeto_id, peca_id)
+  select distinct pf.id,
+    left(case when p_resposta = 'aprovada' then 'Cliente aprovou: ' else 'Cliente pediu ajuste em: ' end
+         || coalesce(v_cliente || ' · ', '') || v_peca.titulo || ' (versão ' || v_versao.numero || ')', 1000),
+    v_peca.projeto_id, v_peca.id
+  from perfis pf
+  where pf.ativo
+    and (pf.admin or pf.id in (v_peca.responsavel_id, v_peca.criado_por, v_versao.enviado_por))
+    and (pf.admin or exists (select 1 from permissoes pm where pm.usuario_id = pf.id and pm.modulo = 'criacao' and pm.ver));
+end $$;
+
 alter table public.modulos     enable row level security;
 alter table public.perfis      enable row level security;
 alter table public.permissoes  enable row level security;
@@ -938,10 +1119,12 @@ alter table public.orcamentos  enable row level security;
 alter table public.produtos    enable row level security;
 alter table public.fornecedores enable row level security;
 alter table public.equipamentos enable row level security;
+alter table public.pecas       enable row level security;
+alter table public.peca_versoes enable row level security;
 
 do $$ declare r record; begin
   for r in select policyname, tablename from pg_policies where schemaname = 'public'
-    and tablename in ('modulos','perfis','permissoes','clientes','projetos','tarefas','comentarios','avisos','ajustes','anexos','briefings','lancamentos','orcamentos','produtos','fornecedores','equipamentos')
+    and tablename in ('modulos','perfis','permissoes','clientes','projetos','tarefas','comentarios','avisos','ajustes','anexos','briefings','lancamentos','orcamentos','produtos','fornecedores','equipamentos','pecas','peca_versoes')
   loop execute format('drop policy %I on public.%I', r.policyname, r.tablename); end loop;
 end $$;
 
@@ -1109,6 +1292,29 @@ create policy equipamentos_editar on public.equipamentos for update to authentic
 create policy equipamentos_apagar on public.equipamentos for delete to authenticated
   using (public.pode('equipamentos', 'apagar'));
 
+-- Criação: permissão "criacao". A peça precisa ser de um projeto que a
+-- pessoa enxerga. Versão nova: quem pode criar ou editar peças. Apagar
+-- versão: quem pode apagar, ou quem enviou, enquanto o cliente não respondeu.
+create policy pecas_ler on public.pecas for select to authenticated
+  using (public.pode('criacao', 'ver'));
+create policy pecas_criar on public.pecas for insert to authenticated
+  with check (public.pode('criacao', 'criar') and exists (select 1 from public.projetos p where p.id = projeto_id));
+create policy pecas_editar on public.pecas for update to authenticated
+  using (public.pode('criacao', 'editar'))
+  with check (public.pode('criacao', 'editar') and exists (select 1 from public.projetos p where p.id = projeto_id));
+create policy pecas_apagar on public.pecas for delete to authenticated
+  using (public.pode('criacao', 'apagar'));
+create policy peca_versoes_ler on public.peca_versoes for select to authenticated
+  using (public.pode('criacao', 'ver'));
+create policy peca_versoes_criar on public.peca_versoes for insert to authenticated
+  with check ((public.pode('criacao', 'criar') or public.pode('criacao', 'editar'))
+              and exists (select 1 from public.pecas pc where pc.id = peca_id));
+create policy peca_versoes_editar on public.peca_versoes for update to authenticated
+  using (public.pode('criacao', 'editar')) with check (public.pode('criacao', 'editar'));
+create policy peca_versoes_apagar on public.peca_versoes for delete to authenticated
+  using (public.pode('criacao', 'apagar')
+         or (enviado_por = auth.uid() and resposta = 'aguardando' and public.pode('criacao', 'ver')));
+
 -- Os arquivos em si (Storage) seguem a tabela de anexos: só se lê o arquivo
 -- cujo anexo a pessoa vê; só se envia para um caminho que ela mesma acabou
 -- de registrar; só se apaga o que ela pode apagar. Ninguém substitui arquivo.
@@ -1143,6 +1349,23 @@ create policy notas_arquivo_apagar on storage.objects for delete to authenticate
     select 1 from public.lancamentos l where l.nf_caminho = name
       and (public.pode('financeiro', 'editar') or public.pode('financeiro', 'apagar'))));
 
+-- Arquivos das peças (depósito "pecas"): a equipe lista e lê o que a
+-- versão dela registra; envia só para o caminho que a própria pessoa
+-- acabou de registrar; apaga quem pode apagar a versão. O cliente só abre
+-- o arquivo pelo endereço exato, que vem junto da peça pelo link dele.
+drop policy if exists pecas_arquivo_ler on storage.objects;
+drop policy if exists pecas_arquivo_enviar on storage.objects;
+drop policy if exists pecas_arquivo_apagar on storage.objects;
+create policy pecas_arquivo_ler on storage.objects for select to authenticated
+  using (bucket_id = 'pecas' and exists (select 1 from public.peca_versoes v where v.caminho = name));
+create policy pecas_arquivo_enviar on storage.objects for insert to authenticated
+  with check (bucket_id = 'pecas' and exists (
+    select 1 from public.peca_versoes v where v.caminho = name and v.enviado_por = auth.uid()));
+create policy pecas_arquivo_apagar on storage.objects for delete to authenticated
+  using (bucket_id = 'pecas' and exists (
+    select 1 from public.peca_versoes v where v.caminho = name
+      and (public.pode('criacao', 'apagar') or (v.enviado_por = auth.uid() and v.resposta = 'aguardando'))));
+
 -- ---------------------------------------------------------------------
 -- Visitante sem login (papel "anon" do Supabase) não toca em nada:
 -- nem tabelas, nem funções. O login usa o serviço de autenticação, não
@@ -1163,11 +1386,16 @@ grant execute on function public.ping() to anon;
 -- Cliente respondendo o briefing pelo link (sem login).
 grant execute on function public.briefing_abrir(text) to anon;
 grant execute on function public.briefing_enviar(text, jsonb) to anon;
+-- Cliente aprovando a peça pelo link (sem login).
+grant execute on function public.peca_abrir(text) to anon;
+grant execute on function public.peca_responder(text, text, text, text) to anon;
 -- Funções internas dos gatilhos ficam fechadas.
 revoke execute on function public.preparar_briefing() from authenticated;
 revoke execute on function public.preparar_lancamento() from authenticated;
 revoke execute on function public.preparar_orcamento() from authenticated;
 revoke execute on function public.preparar_fornecedor() from authenticated;
+revoke execute on function public.preparar_peca() from authenticated;
+revoke execute on function public.preparar_versao() from authenticated;
 
 -- Avisa a API do Supabase para reler a estrutura (colunas e funções novas).
 notify pgrst, 'reload schema';

@@ -65,3 +65,29 @@ export function conferirNota(arquivo) {
   if (!arquivo.size) throw new Error('O arquivo da nota está vazio.');
   return { tipo, ext: TIPOS_NOTA[tipo] };
 }
+
+// Arquivo de uma versão de peça da Criação: imagem, PDF ou vídeo, até 50 MB
+// (iguais ao depósito "pecas" do banco). Maior que isso: mande o link do Drive.
+export const LIMITE_PECA = 50 * 1024 * 1024;
+export const TIPOS_PECA = {
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif',
+  'application/pdf': 'pdf', 'video/mp4': 'mp4', 'video/webm': 'webm', 'video/quicktime': 'mov',
+};
+const PECA_PELA_EXTENSAO = { ...Object.fromEntries(Object.entries(TIPOS_PECA).map(([t, e]) => [e, t])), jpeg: 'image/jpeg' };
+export const ACEITOS_PECA = Object.keys(PECA_PELA_EXTENSAO).map((e) => `.${e}`).join(',');
+
+export function conferirArquivoPeca(arquivo) {
+  const ext0 = (arquivo.name.split('.').pop() || '').toLowerCase();
+  const tipo = TIPOS_PECA[arquivo.type] ? arquivo.type : PECA_PELA_EXTENSAO[ext0];
+  if (!tipo) throw new Error(`"${arquivo.name}" não foi enviado: só imagens (JPG, PNG, WEBP, GIF), PDF e vídeos (MP4, WEBM, MOV).`);
+  if (arquivo.size > LIMITE_PECA) throw new Error(`"${arquivo.name}" passa de 50 MB. Para arquivos grandes, envie como link (Google Drive, YouTube).`);
+  if (!arquivo.size) throw new Error(`"${arquivo.name}" está vazio.`);
+  return { tipo, ext: TIPOS_PECA[tipo] };
+}
+
+// Link externo da versão: só https, sem espaços.
+export function conferirLinkPeca(link) {
+  const l = String(link ?? '').trim();
+  if (!/^https:\/\/[^\s<>"]+$/.test(l) || l.length > 1000) throw new Error('O link precisa começar com https:// (ex.: link do Google Drive ou do YouTube).');
+  return l;
+}
