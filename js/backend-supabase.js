@@ -50,6 +50,10 @@ function traduzirErro(msg) {
   if (/pecas_prazo/i.test(msg)) return 'Confira o prazo.';
   if (/peca_versoes_origem/i.test(msg)) return 'Envie um arquivo (imagem, PDF ou vídeo até 50 MB) ou um link https.';
   if (/peca_versoes_tamanhos/i.test(msg)) return 'Observação grande demais (até 5 mil letras).';
+  if (/gravacoes_tamanhos/i.test(msg)) return 'Preencha o título da gravação (textos curtos, até 20 pessoas e 60 equipamentos).';
+  if (/gravacoes_horario/i.test(msg)) return 'Confira o dia e o horário: o fim precisa ser depois do início.';
+  if (/gravacoes_status/i.test(msg)) return 'Situação de gravação inválida.';
+  if (/gravacoes_checklist|Item de checklist/i.test(msg)) return 'Confira os itens do checklist (até 100, cada um com até 300 letras).';
   if (/Failed to fetch|NetworkError/i.test(msg)) return 'Sem conexão com o servidor. Confira a internet e tente de novo.';
   return msg;
 }

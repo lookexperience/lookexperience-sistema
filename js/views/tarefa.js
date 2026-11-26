@@ -61,6 +61,7 @@ export async function abrirTarefa(ctx, tarefa, padrao = {}) {
     seletorProjeto.innerHTML = opcoes(lista, escolhido, interno ? 'Sem projeto' : 'Escolha o projeto');
     seletorProjeto.required = !interno;
     if (!interno && lista.length === 1 && !seletorProjeto.value) seletorProjeto.value = lista[0].chave;
+    if (!interno && !seletorProjeto.value) seletorProjeto.value = lista.find((p) => p.nome === 'Geral')?.chave ?? '';
     $('#aviso-projeto', el).textContent = !interno && !lista.length ? 'Este cliente ainda não tem projeto. Crie um na ficha do cliente.' : '';
   };
   seletorCliente.addEventListener('change', atualizarProjetos);

@@ -81,6 +81,12 @@ A chave pública pode ficar no código. Quem protege os dados são as regras do 
 - O cliente abre `aprovacao.html#código`, sem login. O código tem 64 letras e números sorteados pelo banco e só abre aquela peça. Ele responde só a última versão, uma vez, pelas funções `peca_abrir` e `peca_responder`; a equipe não consegue aprovar no lugar dele.
 - O depósito `pecas` é público para o cliente ver o arquivo sem login, mas cada arquivo tem nome sorteado e ninguém de fora lista o que tem dentro. O plano grátis do Supabase tem 1 GB de arquivos: vídeos pesados vão melhor como link.
 
+## Execução: gravações
+- Tela **Execução** (tabela `gravacoes`, permissão **Execução**): dia e horário, local, projeto, equipe (até 20 pessoas), equipamentos (até 60) e checklist (até 100 itens `{ texto, feito }`).
+- Quem está na equipe de uma gravação vê a gravação e marca o checklist mesmo sem a permissão; o banco não deixa essa pessoa mudar mais nada. Quem entra na equipe recebe aviso.
+- Pessoa ou equipamento apagado sai sozinho da lista na próxima vez que a gravação for salva.
+- Todo cliente novo já nasce com o projeto **Geral** (gatilho `criar_projeto_geral`).
+
 ## Como fazer atualizações
 
 Toda mudança é feita no código, e só vai pro ar com os testes de `testes/` passando:

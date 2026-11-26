@@ -13,6 +13,7 @@ import * as projetos from './views/projetos.js';
 import * as equipe from './views/equipe.js';
 import * as financas from './views/financas.js';
 import * as criacao from './views/criacao.js';
+import * as execucao from './views/execucao.js';
 import * as orcamentos from './views/orcamentos.js';
 import * as produtos from './views/produtos.js';
 import * as fornecedores from './views/fornecedores.js';
@@ -28,6 +29,7 @@ const ROTAS = [
   { rota: 'clientes', nome: 'Clientes', modulo: 'clientes', icone: 'clientes', view: clientes },
   { rota: 'projetos', nome: 'Projetos', modulo: 'projetos', icone: 'projetos', view: projetos },
   { rota: 'criacao', nome: 'Criação', modulo: 'criacao', icone: 'criacao', view: criacao },
+  { rota: 'execucao', nome: 'Execução', modulo: null, icone: 'execucao', view: execucao, mostrar: (s) => pode(s, 'execucao', 'ver') || execucao.temGravacao(estado) },
   { rota: 'orcamentos', nome: 'Orçamentos', modulo: 'comercial', icone: 'comercial', view: orcamentos },
   { rota: 'produtos', nome: 'Produtos', modulo: 'comercial', icone: 'produtos', view: produtos },
   { rota: 'fornecedores', nome: 'Fornecedores', modulo: 'fornecedores', icone: 'fornecedores', view: fornecedores },
@@ -59,13 +61,14 @@ const ctx = {
 async function carregar() {
   estado.sessao = await db.sessao();
   if (!estado.sessao) return;
-  const [perfis, cli, proj, tar, av] = await Promise.all([
+  const [perfis, cli, proj, tar, av, grav] = await Promise.all([
     db.listar('perfis'), db.listar('clientes'), db.listar('projetos'), db.listar('tarefas'), db.listar('avisos'),
+    db.listar('gravacoes').catch(() => []),
   ]);
-  Object.assign(estado, { perfis, clientes: cli, projetos: proj, tarefas: tar, avisos: av });
+  Object.assign(estado, { perfis, clientes: cli, projetos: proj, tarefas: tar, avisos: av, gravacoes: grav });
 }
 
-const rotasPermitidas = () => ROTAS.filter((r) => !r.modulo || pode(estado.sessao, r.modulo, 'ver'));
+const rotasPermitidas = () => ROTAS.filter((r) => (r.mostrar ? r.mostrar(estado.sessao) : !r.modulo || pode(estado.sessao, r.modulo, 'ver')));
 
 function rotaAtual() {
   const nome = location.hash.replace(/^#\/?/, '') || 'visao-geral';
@@ -172,6 +175,12 @@ function alternarAvisos() {
     const aviso = estado.avisos.find((a) => a.id === el.dataset.id);
     caixa.classList.add('oculto');
     if (!aviso.lido) { await db.atualizar('avisos', aviso.id, { lido: true }); aviso.lido = true; atualizarContador(); }
+    // Gravação nova: abre a gravação na tela Execução.
+    if (aviso.gravacao_id) {
+      estado.abrirGravacao = aviso.gravacao_id;
+      if (location.hash === '#/execucao') desenharPagina(); else ctx.navegar('execucao');
+      return;
+    }
     // Resposta do cliente a uma peça: abre a peça na tela Criação.
     if (aviso.peca_id && pode(estado.sessao, 'criacao', 'ver')) {
       estado.abrirPeca = aviso.peca_id;

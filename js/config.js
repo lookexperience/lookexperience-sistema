@@ -57,6 +57,22 @@ export const STATUS_PECA = [
   { chave: 'aprovada', nome: 'Aprovada' },
 ];
 
+// Execução: situação de cada gravação e o checklist que já vem pronto.
+export const STATUS_GRAVACAO = [
+  { chave: 'agendada', nome: 'Agendada' },
+  { chave: 'realizada', nome: 'Realizada' },
+  { chave: 'cancelada', nome: 'Cancelada' },
+];
+export const CHECKLIST_PADRAO = [
+  'Baterias carregadas (câmera, microfone, luz)',
+  'Cartões de memória vazios e formatados',
+  'Lentes limpas',
+  'Microfone testado',
+  'Roteiro ou lista de cenas em mãos',
+  'Autorização de uso de imagem',
+  'Backup do material no fim do dia',
+];
+
 export const STATUS_PROJETO = [
   { chave: 'ativo', nome: 'Ativo' },
   { chave: 'pausado', nome: 'Pausado' },
@@ -72,7 +88,7 @@ export const MODULOS = [
   { chave: 'comercial', nome: 'Comercial e orçamentos', fase: 1 },
   { chave: 'fornecedores', nome: 'Fornecedores', fase: 1 },
   { chave: 'criacao', nome: 'Criação', fase: 1 },
-  { chave: 'execucao', nome: 'Execução', fase: 3 },
+  { chave: 'execucao', nome: 'Execução', fase: 1 },
   { chave: 'materiais', nome: 'Banco de materiais', fase: 3 },
   { chave: 'equipamentos', nome: 'Equipamentos', fase: 1 },
   { chave: 'financeiro', nome: 'Financeiro da empresa', fase: 1 },
