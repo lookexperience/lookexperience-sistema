@@ -2,6 +2,18 @@
 // entrada no topo desta lista; a tela "Sobre o sistema" mostra tudo.
 export const HISTORICO = [
   {
+    versao: '0.10.0',
+    data: '2026-11-26',
+    titulo: 'Criação com aprovação do cliente',
+    itens: [
+      'Nova tela "Criação": as peças de cada projeto (post, carrossel, vídeo, logo, site...) num quadro por situação: em criação, com o cliente, ajuste pedido e aprovada',
+      'Cada peça guarda as versões enviadas (versão 1, 2, 3...): arquivo de imagem, PDF ou vídeo até 50 MB, ou um link do Google Drive ou YouTube, com recado para o cliente',
+      'Link de aprovação exclusivo por peça: o cliente abre sem login, vê a última versão e aprova ou pede ajuste com comentário; as versões anteriores ficam logo abaixo',
+      'Quando o cliente responde, a peça muda de coluna sozinha e o responsável, quem criou a peça e o administrador recebem um aviso que abre a peça',
+      'A permissão "Criação" em Equipe e acessos passa a valer: ver, criar, editar e apagar peças',
+    ],
+  },
+  {
     versao: '0.9.0',
     data: '2026-11-13',
     titulo: 'Produtos, fornecedores e equipamentos',

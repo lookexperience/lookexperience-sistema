@@ -643,6 +643,95 @@ reset role;
 set role authenticated;
 select teste.como('00000000-0000-0000-0000-0000000000aa');
 
+-- ---------------------------------------------------------------------
+-- Criação: peças, versões e aprovação do cliente pelo link
+-- ---------------------------------------------------------------------
+select teste.ok(teste.linhas($$insert into pecas (id, projeto_id, titulo, tipo, token) values ('80000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'Post de lançamento', 'post', repeat('a', 64))$$) = 1, 'Admin cria peça no projeto');
+select teste.ok((select token ~ '^[0-9a-f]{64}$' and token <> repeat('a', 64) and status = 'em_criacao' from pecas where id = '80000000-0000-0000-0000-000000000001'), 'O banco sorteia o link de aprovação da peça (não aceita um escolhido)');
+select teste.ok(teste.linhas($$insert into pecas (projeto_id, titulo, tipo) values ('20000000-0000-0000-0000-000000000001', 'x', 'meme')$$) = -1, 'Tipo de peça inventado é recusado');
+select teste.ok(teste.linhas($$insert into pecas (projeto_id, titulo) values ('20000000-0000-0000-0000-000000000001', '  ')$$) = -1, 'Peça sem título é recusada');
+
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok((select count(*) = 0 from pecas), 'Sem permissão de criação, não vê peças');
+select teste.ok(teste.linhas($$insert into pecas (projeto_id, titulo) values ('20000000-0000-0000-0000-000000000001', 'x')$$) = -1, 'Sem permissão de criação, não cria peça');
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+insert into permissoes values ('00000000-0000-0000-0000-0000000000bb', 'criacao', true, true, true, false, 'proprias');
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok((select count(*) = 1 from pecas), 'Com "criação", vê as peças');
+select teste.ok(teste.linhas($$insert into pecas (id, projeto_id, titulo, tipo, responsavel_id) values ('80000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', 'Logo Flambé', 'logo', '00000000-0000-0000-0000-0000000000bb')$$) = 1, 'Gerente com "criar" cria peça');
+select teste.ok((select criado_por = '00000000-0000-0000-0000-0000000000bb' from pecas where id = '80000000-0000-0000-0000-000000000002'), 'Autor da peça é quem criou');
+select teste.ok(teste.linhas($$insert into pecas (projeto_id, titulo) values ('99999999-0000-0000-0000-000000000000', 'x')$$) = -1, 'Peça só entra em projeto que existe');
+select teste.ok(teste.linhas($$insert into peca_versoes (peca_id, link, resposta, numero) values ('80000000-0000-0000-0000-000000000002', 'https://drive.google.com/file/d/abc', 'aprovada', 7)$$) = 1, 'Gerente envia versão com link');
+select teste.ok((select numero = 1 and resposta = 'aguardando' and enviado_por = '00000000-0000-0000-0000-0000000000bb' from peca_versoes where peca_id = '80000000-0000-0000-0000-000000000002'), 'Versão nasce número 1 e aguardando o cliente (não aceita resposta escolhida)');
+select teste.ok((select status = 'em_aprovacao' from pecas where id = '80000000-0000-0000-0000-000000000002'), 'Peça com versão nova vai para "em aprovação"');
+select teste.ok(teste.linhas($$insert into peca_versoes (peca_id, link) values ('80000000-0000-0000-0000-000000000002', 'javascript:alert(1)')$$) = -1, 'Ataque: link que não é https é recusado');
+select teste.ok(teste.linhas($$insert into peca_versoes (peca_id, link, caminho, tipo, tamanho) values ('80000000-0000-0000-0000-000000000002', 'https://x.com', '80000000-0000-0000-0000-000000000002/81000000-0000-0000-0000-000000000009.png', 'image/png', 10)$$) = -1, 'Versão não pode ter arquivo e link ao mesmo tempo');
+select teste.ok(teste.linhas($$insert into peca_versoes (peca_id, caminho, tipo, tamanho) values ('80000000-0000-0000-0000-000000000002', '80000000-0000-0000-0000-000000000001/81000000-0000-0000-0000-000000000009.png', 'image/png', 10)$$) = -1, 'Ataque: arquivo na pasta de outra peça é recusado');
+select teste.ok(teste.linhas($$insert into peca_versoes (peca_id, caminho, tipo, tamanho) values ('80000000-0000-0000-0000-000000000002', '80000000-0000-0000-0000-000000000002/81000000-0000-0000-0000-000000000009.png', 'text/html', 10)$$) = -1, 'Ataque: arquivo HTML é recusado');
+select teste.ok(teste.linhas($$insert into peca_versoes (peca_id, caminho, tipo, tamanho) values ('80000000-0000-0000-0000-000000000002', '80000000-0000-0000-0000-000000000002/81000000-0000-0000-0000-000000000009.mp4', 'video/mp4', 60000000)$$) = -1, 'Arquivo acima de 50 MB é recusado');
+select teste.ok(teste.linhas($$insert into peca_versoes (peca_id, caminho, nome, tipo, tamanho) values ('80000000-0000-0000-0000-000000000001', '80000000-0000-0000-0000-000000000001/81000000-0000-0000-0000-000000000001.png', 'post.png', 'image/png', 1000)$$) = 1, 'Gerente envia versão com arquivo');
+select teste.ok(teste.linhas($$insert into storage.objects (bucket_id, name) values ('pecas', '80000000-0000-0000-0000-000000000001/81000000-0000-0000-0000-000000000001.png')$$) = 1, 'Gerente sobe o arquivo da versão que registrou');
+select teste.ok(teste.linhas($$insert into storage.objects (bucket_id, name) values ('pecas', '80000000-0000-0000-0000-000000000001/81000000-0000-0000-0000-000000000077.png')$$) = -1, 'Ataque: não sobe arquivo sem versão registrada');
+select teste.ok(teste.linhas($$update peca_versoes set resposta = 'aprovada', nome_cliente = 'Eu mesmo' where peca_id = '80000000-0000-0000-0000-000000000002'$$) = 1, 'Ataque: equipe não aprova no lugar do cliente (comando)');
+select teste.ok((select resposta = 'aguardando' and nome_cliente = '' from peca_versoes where peca_id = '80000000-0000-0000-0000-000000000002'), 'Ataque: equipe não aprova no lugar do cliente');
+select teste.ok(teste.linhas($$update peca_versoes set observacao = 'Ajustei a cor' where peca_id = '80000000-0000-0000-0000-000000000002'$$) = 1, 'Equipe muda a observação da versão (comando)');
+select teste.ok((select observacao = 'Ajustei a cor' from peca_versoes where peca_id = '80000000-0000-0000-0000-000000000002'), 'Equipe muda a observação da versão');
+select teste.ok(teste.linhas($$update peca_versoes set link = 'https://outro.com', numero = 9 where peca_id = '80000000-0000-0000-0000-000000000002'$$) = 1, 'Arquivo, link e número da versão enviada não mudam (comando)');
+select teste.ok((select link = 'https://drive.google.com/file/d/abc' and numero = 1 from peca_versoes where peca_id = '80000000-0000-0000-0000-000000000002'), 'Arquivo, link e número da versão enviada não mudam');
+select teste.ok(teste.linhas($$update pecas set token = repeat('b', 64), criado_por = '00000000-0000-0000-0000-0000000000aa' where id = '80000000-0000-0000-0000-000000000002'$$) = 1, 'Ataque: ninguém troca o link nem o autor da peça (comando)');
+select teste.ok((select token <> repeat('b', 64) and criado_por = '00000000-0000-0000-0000-0000000000bb' from pecas where id = '80000000-0000-0000-0000-000000000002'), 'Ataque: ninguém troca o link nem o autor da peça');
+select teste.ok(teste.linhas($$delete from pecas$$) = 0, 'Sem "apagar", não apaga peça');
+
+select teste.como('00000000-0000-0000-0000-0000000000cc');
+select teste.ok((select count(*) = 0 from pecas) and (select count(*) = 0 from peca_versoes), 'Freelancer sem criação não vê peças nem versões');
+select teste.ok(teste.linhas($$insert into peca_versoes (peca_id, link) values ('80000000-0000-0000-0000-000000000002', 'https://x.com')$$) = -1, 'Freelancer não envia versão');
+select teste.ok((select count(*) = 0 from storage.objects where bucket_id = 'pecas'), 'Freelancer não lista os arquivos das peças');
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+
+reset role;
+create temp table link_peca as select token from pecas where id = '80000000-0000-0000-0000-000000000002';
+grant select on link_peca to anon;
+set role anon;
+select teste.como(null);
+select teste.ok(teste.linhas($$select * from pecas$$) = -1 and teste.linhas($$select * from peca_versoes$$) = -1, 'Ataque: visitante não lê as tabelas de peças');
+select teste.ok(teste.linhas($$select * from storage.objects where bucket_id = 'pecas'$$) <= 0, 'Ataque: visitante não lista os arquivos das peças');
+select teste.ok((select public.peca_abrir((select token from link_peca)) ->> 'projeto' = 'Identidade'
+  and jsonb_array_length(public.peca_abrir((select token from link_peca)) -> 'versoes') = 1), 'Cliente abre a peça pelo link e vê a versão');
+select teste.ok((select public.peca_abrir(repeat('0', 64)) is null and public.peca_abrir('x'' or 1=1 --') is null), 'Link errado não abre nenhuma peça');
+select teste.ok(teste.linhas($$select public.peca_responder((select token from link_peca), 'ajuste', '', 'Sócio')$$) = -1, 'Pedido de ajuste sem comentário é recusado');
+select teste.ok(teste.linhas($$select public.peca_responder((select token from link_peca), 'aprovada', '', '')$$) = -1, 'Resposta sem nome é recusada');
+select teste.ok(teste.linhas($$select public.peca_responder((select token from link_peca), 'apagar', '', 'Sócio')$$) = -1, 'Ataque: resposta inventada é recusada');
+select teste.ok(teste.linhas($$select public.peca_responder(repeat('0', 64), 'aprovada', '', 'Sócio')$$) = -1, 'Link errado não responde nada');
+select teste.ok(teste.linhas($$select public.peca_responder((select token from link_peca), 'ajuste', 'Aumentar o logo <script>x</script>', 'Sócio')$$) = 1, 'Cliente pede ajuste pelo link');
+select teste.ok(teste.linhas($$select public.peca_responder((select token from link_peca), 'aprovada', '', 'Sócio')$$) = -1, 'Versão já respondida não é respondida de novo');
+select teste.ok((select public.peca_abrir((select token from link_peca)) ->> 'status' = 'ajuste'), 'Link mostra que o ajuste foi pedido');
+reset role;
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok((select resposta = 'ajuste' and nome_cliente = 'Sócio' and respondido_em is not null from peca_versoes where peca_id = '80000000-0000-0000-0000-000000000002'), 'Resposta do cliente fica guardada na versão');
+select teste.ok((select status = 'ajuste' from pecas where id = '80000000-0000-0000-0000-000000000002'), 'Peça passa para "ajuste pedido"');
+select teste.ok((select count(*) = 1 from avisos where peca_id = '80000000-0000-0000-0000-000000000002' and texto like 'Cliente pediu ajuste em: %Logo Flambé (versão 1)'), 'Responsável recebe aviso do pedido de ajuste');
+select teste.ok(teste.linhas($$delete from peca_versoes where peca_id = '80000000-0000-0000-0000-000000000002'$$) = 0, 'Versão já respondida não é apagada por quem não pode apagar');
+select teste.ok(teste.linhas($$insert into peca_versoes (peca_id, link) values ('80000000-0000-0000-0000-000000000002', 'https://drive.google.com/file/d/v2')$$) = 1, 'Versão 2 recebe o número seguinte (comando)');
+select teste.ok((select max(numero) = 2 from peca_versoes where peca_id = '80000000-0000-0000-0000-000000000002'), 'Versão 2 recebe o número seguinte');
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.ok((select count(*) = 1 from avisos where peca_id = '80000000-0000-0000-0000-000000000002'), 'Admin também recebe o aviso da peça');
+select teste.como('00000000-0000-0000-0000-0000000000cc');
+select teste.ok((select count(*) = 0 from avisos where peca_id is not null), 'Freelancer não recebe aviso de peça');
+reset role;
+set role anon;
+select teste.como(null);
+select teste.ok(teste.linhas($$select public.peca_responder((select token from link_peca), 'aprovada', 'Perfeito!', 'Sócio')$$) = 1, 'Cliente aprova a versão 2');
+reset role;
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.ok((select status = 'aprovada' from pecas where id = '80000000-0000-0000-0000-000000000002')
+  and (select string_agg(resposta, ',' order by numero) = 'ajuste,aprovada' from peca_versoes where peca_id = '80000000-0000-0000-0000-000000000002'), 'Peça aprovada; a versão 1 continua com o ajuste pedido');
+select teste.ok(teste.linhas($$delete from storage.objects where bucket_id = 'pecas' and name = '80000000-0000-0000-0000-000000000001/81000000-0000-0000-0000-000000000001.png'$$) = 1, 'Admin apaga o arquivo da peça');
+select teste.ok(teste.linhas($$delete from pecas where id = '80000000-0000-0000-0000-000000000001'$$) = 1, 'Admin apaga a peça');
+select teste.ok((select count(*) = 0 from peca_versoes where peca_id = '80000000-0000-0000-0000-000000000001'), 'As versões saem junto com a peça');
+delete from permissoes where usuario_id = '00000000-0000-0000-0000-0000000000bb' and modulo = 'criacao';
+
 -- Visitante sem login chamando as funções do banco direto pela API
 reset role;
 set role anon;

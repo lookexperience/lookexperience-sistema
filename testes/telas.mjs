@@ -103,10 +103,10 @@ await teste('Site envia a política de segurança (CSP) do Netlify', async () =>
 });
 
 await teste('Admin: sistema abre e mostra o menu completo', async () => {
-  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Orçamentos', 'Produtos', 'Fornecedores', 'Equipamentos', 'Finanças', 'Apresentações', 'Equipe e acessos'], 'menu');
+  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Criação', 'Orçamentos', 'Produtos', 'Fornecedores', 'Equipamentos', 'Finanças', 'Apresentações', 'Equipe e acessos'], 'menu');
 });
 
-for (const rota of ['visao-geral', 'atividades', 'calendario', 'clientes', 'projetos', 'financas', 'apresentacoes', 'equipe', 'sobre']) {
+for (const rota of ['visao-geral', 'atividades', 'calendario', 'clientes', 'projetos', 'criacao', 'financas', 'apresentacoes', 'equipe', 'sobre']) {
   await teste(`Admin: tela "${rota}" abre sem erro`, async () => {
     await ir(rota);
     confere(!(await p.locator('#pagina .erro').count()), 'apareceu mensagem de erro');
@@ -634,7 +634,7 @@ await teste('Admin: troca a senha de acesso (Enter salva, sem pôr a senha no en
 await comoUsuario('u-marina');
 
 await teste('Gerente: menu sem Equipe e acessos', async () => {
-  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Finanças', 'Apresentações'], 'menu');
+  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Criação', 'Finanças', 'Apresentações'], 'menu');
 });
 
 await teste('Gerente: recebeu o aviso da menção', async () => {
@@ -1177,7 +1177,7 @@ await teste('Equipamentos e fornecedores: gerente sem permissão não vê; com "
 await teste('Celular: telas cabem na largura (sem rolagem para o lado)', async () => {
   await comoUsuario('u-pablo');
   await p.setViewportSize({ width: 390, height: 844 });
-  for (const rota of ['visao-geral', 'clientes', 'projetos', 'financas', 'orcamentos', 'produtos', 'fornecedores', 'equipamentos']) {
+  for (const rota of ['visao-geral', 'clientes', 'projetos', 'criacao', 'financas', 'orcamentos', 'produtos', 'fornecedores', 'equipamentos']) {
     await ir(rota);
     const sobra = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     confere(sobra <= 1, `${rota} passa ${sobra}px da tela`);
@@ -1282,6 +1282,150 @@ await teste('Apresentações: código escondido no Word não roda', async () => 
   const achados = await p.evaluate(() => [...document.querySelectorAll('[data-xss], script:not([src]), svg[onload], img[onerror]')].length + (window.__xss ? 1 : 0));
   await p.click('.lk-fechar');
   igual(achados, 0, 'elementos injetados');
+});
+
+// =====================================================================
+// CRIAÇÃO E APROVAÇÃO DO CLIENTE
+// =====================================================================
+let linkDaPeca = '';
+let projetoDaPeca = '';
+const PNG_1PX = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==', 'base64');
+
+await teste('Criação: quadro mostra as peças por situação', async () => {
+  await comoUsuario('u-pablo');
+  await ir('criacao');
+  igual(await cartoes('em_aprovacao'), ['Post de lançamento da loja nova'], 'com o cliente');
+  igual(await cartoes('ajuste'), ['Logo Flambé'], 'ajuste pedido');
+  await p.screenshot({ path: join(CAPTURAS, 'criacao.png') });
+});
+
+await teste('Criação: cria peça, envia versão com imagem e o cartão vai para "Com o cliente"', async () => {
+  await ir('criacao');
+  await p.click('#nova-peca');
+  await p.fill('[name=titulo]', 'Reels da inauguração');
+  projetoDaPeca = await p.$eval('[name=projeto_id]', (s) => s.options[s.selectedIndex].text);
+  await p.selectOption('[name=tipo]', 'video');
+  await p.fill('[name=prazo]', '2026-12-10');
+  await p.fill('[name=descricao]', 'Vídeo curto para o Instagram.');
+  await p.click('#salvar-ficha');
+  await p.waitForSelector('#form-versao');
+  confere((await p.textContent('.modal h2')).includes('Reels da inauguração'), 'não reabriu a peça salva');
+  linkDaPeca = await p.inputValue('.link-peca');
+  confere(/\/aprovacao\.html#[0-9a-f]{64}$/.test(linkDaPeca), `link estranho: ${linkDaPeca}`);
+  await p.click('#enviar-versao'); await p.waitForTimeout(100);
+  confere((await p.textContent('#erro-versao')).includes('arquivo ou cole um link'), 'enviou sem nada');
+  await p.setInputFiles('[name=arquivo]', { name: 'capa.png', mimeType: 'image/png', buffer: PNG_1PX });
+  await p.fill('[name=observacao]', 'Primeira versão da capa.');
+  await p.click('#enviar-versao');
+  await p.waitForSelector('.versao[data-versao]');
+  igual(await p.locator('.versao .info > div:first-child b').allTextContents(), ['Versão 1'], 'versões');
+  confere((await p.textContent('.versao .etiqueta')).includes('Aguardando'), 'sem situação da versão');
+  await fecharModal();
+  confere((await cartoes('em_aprovacao')).includes('Reels da inauguração'), 'cartão não mudou de coluna');
+});
+
+await teste('Ataque: arquivo de página HTML não vira versão de peça', async () => {
+  await p.click('.cartao:has-text("Reels da inauguração")');
+  await p.waitForSelector('#form-versao');
+  await p.setInputFiles('[name=arquivo]', { name: 'golpe.html', mimeType: 'text/html', buffer: Buffer.from('<script>alert(1)</script>') });
+  await p.click('#enviar-versao'); await p.waitForTimeout(150);
+  confere((await p.textContent('#erro-versao')).includes('não foi enviado'), 'aceitou HTML');
+  await p.setInputFiles('[name=arquivo]', []);
+  await p.fill('[name=link]', 'javascript:alert(1)');
+  await p.click('#enviar-versao'); await p.waitForTimeout(150);
+  confere((await p.textContent('#erro-versao')).includes('https://'), 'aceitou link perigoso');
+  igual(await p.locator('.versao[data-versao]').count(), 1, 'versões');
+  await fecharModal();
+});
+
+await teste('Cliente: abre o link da peça e vê a versão sem login', async () => {
+  await cliente.goto(linkDaPeca);
+  await cliente.waitForSelector('#form-aprovacao');
+  igual((await cliente.textContent('h1')).trim(), 'Reels da inauguração', 'título');
+  igual((await cliente.textContent('.sobre')).trim(), projetoDaPeca, 'cliente e projeto');
+  confere(await cliente.locator('.versao-atual img.previa').count() === 1, 'imagem não apareceu');
+  confere((await cliente.textContent('.recado')).includes('Primeira versão da capa'), 'recado da LOOK');
+  await cliente.screenshot({ path: join(CAPTURAS, 'aprovacao-cliente.png'), fullPage: true });
+});
+
+await teste('Cliente: pedir ajuste exige nome e comentário', async () => {
+  await cliente.fill('#nome-cliente', '');
+  await cliente.click('#pedir-ajuste'); await cliente.waitForTimeout(100);
+  confere((await cliente.textContent('#erro-aprovacao')).includes('nome'), 'sem pedir nome');
+  await cliente.fill('#nome-cliente', 'Responsável da Lotus');
+  await cliente.click('#pedir-ajuste'); await cliente.waitForTimeout(100);
+  confere((await cliente.textContent('#erro-aprovacao')).includes('ajustar'), 'sem pedir comentário');
+});
+
+await teste('Cliente: pede ajuste com comentário (código no texto não roda)', async () => {
+  await cliente.fill('#comentario-cliente', 'Trocar a música <img src=x onerror="window.__xss=1">');
+  await cliente.click('#pedir-ajuste');
+  await cliente.waitForSelector('.obrigado');
+  confere((await cliente.textContent('.resposta.ajuste')).includes('Trocar a música'), 'comentário não aparece');
+  igual(await cliente.evaluate(() => (window.__xss ? 1 : 0) + document.querySelectorAll('.resposta img').length), 0, 'código rodou');
+  igual(await cliente.locator('#form-aprovacao').count(), 0, 'formulário continua aberto');
+});
+
+await teste('Admin: aviso do ajuste abre a peça com o comentário do cliente', async () => {
+  await p.reload(); await ir('visao-geral');
+  await p.click('#abrir-avisos');
+  await p.locator('.aviso', { hasText: 'Cliente pediu ajuste em: ' }).filter({ hasText: 'Reels da inauguração (versão 1)' }).click();
+  await p.waitForSelector('.comentario-cliente');
+  confere((await p.textContent('.comentario-cliente')).includes('Responsável da Lotus'), 'sem o nome do cliente');
+  confere((await p.textContent('.versao .etiqueta')).includes('Ajuste pedido'), 'versão sem ajuste');
+  await fecharModal();
+  confere((await cartoes('ajuste')).includes('Reels da inauguração'), 'cartão não foi para Ajuste pedido');
+});
+
+await teste('Admin: envia a versão 2 por link e o cliente aprova (com confirmação)', async () => {
+  await p.click('.cartao:has-text("Reels da inauguração")');
+  await p.waitForSelector('#form-versao');
+  await p.fill('[name=link]', 'https://drive.google.com/file/d/exemplo/view');
+  await p.click('#enviar-versao');
+  await p.waitForFunction(() => document.querySelectorAll('.versao[data-versao]').length === 2);
+  igual(await p.locator('.versao .info > div:first-child b').allTextContents(), ['Versão 2', 'Versão 1'], 'versões');
+  await fecharModal();
+  await cliente.goto('about:blank'); await cliente.goto(linkDaPeca);
+  await cliente.waitForSelector('#form-aprovacao');
+  igual((await cliente.textContent('.versao-atual h2')).trim(), 'Versão 2', 'não mostra a última');
+  igual(await cliente.getAttribute('.versao-atual .midia a', 'href'), 'https://drive.google.com/file/d/exemplo/view', 'link da versão');
+  confere(await cliente.locator('details.anteriores .versao-antiga').count() === 1, 'versão anterior não aparece');
+  igual(await cliente.inputValue('#nome-cliente'), 'Responsável da Lotus', 'nome não foi lembrado');
+  await cliente.click('#aprovar'); await cliente.waitForTimeout(100);
+  igual(await cliente.locator('.obrigado').count(), 0, 'aprovou sem confirmar');
+  await cliente.click('#aprovar');
+  await cliente.waitForSelector('.resposta.aprovada');
+  await p.reload(); await ir('criacao');
+  confere((await cartoes('aprovada')).includes('Reels da inauguração'), 'cartão não foi para Aprovada');
+});
+
+await teste('Cliente: link errado ou incompleto da peça mostra explicação', async () => {
+  await cliente.goto(`${BASE}aprovacao.html#${'0'.repeat(64)}`); await cliente.waitForTimeout(300);
+  confere((await cliente.textContent('h1')).includes('não encontrado'), 'link errado');
+  await cliente.goto(`${BASE}aprovacao.html#abc`); await cliente.waitForTimeout(300);
+  confere((await cliente.textContent('h1')).includes('incompleto'), 'link incompleto');
+});
+
+await teste('Criação: freelancer sem permissão não vê a tela; gerente cria mas não apaga', async () => {
+  await comoUsuario('u-rafa');
+  confere(!(await menu()).includes('Criação'), 'freelancer vê Criação');
+  await comoUsuario('u-marina');
+  await ir('criacao');
+  confere(await p.locator('#nova-peca').count() === 1, 'gerente sem botão de nova peça');
+  await p.click('.cartao:has-text("Reels da inauguração")');
+  await p.waitForSelector('#form-versao');
+  igual(await p.locator('#apagar-ficha').count(), 0, 'gerente vê apagar peça');
+  igual(await p.locator('[data-apagar-versao]').count(), 0, 'gerente apaga versão de outra pessoa');
+  await fecharModal();
+  await comoUsuario('u-pablo');
+});
+
+await teste('Admin: apaga a peça (pede confirmação com segundo clique)', async () => {
+  await ir('criacao');
+  await p.click('.cartao:has-text("Reels da inauguração")');
+  await p.waitForSelector('#apagar-ficha');
+  await clicarApagar('#apagar-ficha');
+  confere(!(await p.locator('.cartao:has-text("Reels da inauguração")').count()), 'peça continua no quadro');
 });
 
 // ---------- Resultado ----------

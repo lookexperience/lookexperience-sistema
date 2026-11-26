@@ -12,6 +12,7 @@ import * as clientes from './views/clientes.js';
 import * as projetos from './views/projetos.js';
 import * as equipe from './views/equipe.js';
 import * as financas from './views/financas.js';
+import * as criacao from './views/criacao.js';
 import * as orcamentos from './views/orcamentos.js';
 import * as produtos from './views/produtos.js';
 import * as fornecedores from './views/fornecedores.js';
@@ -26,6 +27,7 @@ const ROTAS = [
   { rota: 'calendario', nome: 'Calendário', modulo: 'tarefas', icone: 'calendario', view: calendario },
   { rota: 'clientes', nome: 'Clientes', modulo: 'clientes', icone: 'clientes', view: clientes },
   { rota: 'projetos', nome: 'Projetos', modulo: 'projetos', icone: 'projetos', view: projetos },
+  { rota: 'criacao', nome: 'Criação', modulo: 'criacao', icone: 'criacao', view: criacao },
   { rota: 'orcamentos', nome: 'Orçamentos', modulo: 'comercial', icone: 'comercial', view: orcamentos },
   { rota: 'produtos', nome: 'Produtos', modulo: 'comercial', icone: 'produtos', view: produtos },
   { rota: 'fornecedores', nome: 'Fornecedores', modulo: 'fornecedores', icone: 'fornecedores', view: fornecedores },
@@ -170,6 +172,12 @@ function alternarAvisos() {
     const aviso = estado.avisos.find((a) => a.id === el.dataset.id);
     caixa.classList.add('oculto');
     if (!aviso.lido) { await db.atualizar('avisos', aviso.id, { lido: true }); aviso.lido = true; atualizarContador(); }
+    // Resposta do cliente a uma peça: abre a peça na tela Criação.
+    if (aviso.peca_id && pode(estado.sessao, 'criacao', 'ver')) {
+      estado.abrirPeca = aviso.peca_id;
+      if (location.hash === '#/criacao') desenharPagina(); else ctx.navegar('criacao');
+      return;
+    }
     const tarefa = estado.tarefas.find((t) => t.id === aviso.tarefa_id);
     if (tarefa) ctx.abrirTarefa(tarefa);
     const projeto = estado.projetos.find((p) => p.id === aviso.projeto_id);
