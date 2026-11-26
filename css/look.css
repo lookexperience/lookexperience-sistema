@@ -539,3 +539,34 @@ label.marcar { display: flex; gap: 8px; align-items: center; text-transform: non
 .novo-item input { flex: 1; min-width: 0; }
 .aviso-conflito { color: var(--latao); font-size: 13px; margin-top: 6px; }
 .escolha-pessoas .pessoa.equip .fraco { margin-left: 4px; }
+
+/* ---------- Banco de materiais ---------- */
+.lista-materiais { display: grid; gap: 8px; }
+.material { display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 1px solid var(--linha); border-left: 3px solid var(--cor-cliente, var(--linha)); border-radius: 8px; background: var(--painel-2); min-width: 0; }
+.material .capa { flex: none; width: 64px; height: 64px; border-radius: 6px; overflow: hidden; display: grid; place-items: center; background: var(--painel-3); text-decoration: none; }
+.material .capa img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.material .info { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.material .nome-material { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.material .descricao-material { color: var(--texto-2); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.material .acoes { display: flex; gap: 6px; flex-wrap: wrap; flex: none; }
+.material .acoes a.botao { text-decoration: none; }
+@media (max-width: 600px) { .material { flex-wrap: wrap; } .material .info { flex-basis: calc(100% - 80px); } }
+
+/* ---------- Conversa do projeto ---------- */
+.conversa { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--linha); }
+.mensagens { display: grid; gap: 8px; max-height: 360px; overflow-y: auto; padding-right: 4px; margin-bottom: 10px; }
+.mensagem { padding: 8px 10px; border: 1px solid var(--linha); border-radius: 8px; background: var(--painel-2); min-width: 0; }
+.mensagem.minha { background: var(--painel-3); }
+.mensagem .cabeca { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.mensagem .cabeca .botao { margin-left: auto; }
+.mensagem .texto { margin-top: 4px; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+.marca { color: var(--latao); }
+.form-mensagem { display: flex; gap: 8px; align-items: flex-end; }
+.form-mensagem textarea { flex: 1; min-width: 0; resize: vertical; }
+
+/* ---------- Registro de horas ---------- */
+.lista-horas .duracao-hora { text-align: right; font-weight: 700; white-space: nowrap; }
+#cronometro.rodando { border-color: var(--latao); color: var(--latao); }
+#tempo-cronometro { font-variant-numeric: tabular-nums; }
+.navega-mes select { margin-left: auto; max-width: 220px; }
+@media (max-width: 600px) { .navega-mes { flex-wrap: wrap; } .navega-mes select { margin-left: 0; max-width: none; width: 100%; } }

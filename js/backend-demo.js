@@ -1,9 +1,9 @@
 // Modo demonstração: guarda tudo neste navegador e imita as regras do
 // banco, para dar para testar o sistema antes do Supabase estar ligado.
-import { MODULOS, TIPOS_PECA, STATUS_PECA, STATUS_GRAVACAO, CHECKLIST_PADRAO } from './config.js';
+import { MODULOS, TIPOS_PECA, STATUS_PECA, STATUS_GRAVACAO, CHECKLIST_PADRAO, CATEGORIAS_MATERIAL } from './config.js';
 import { pode, podeVerTarefa, podeEditarTarefa, temAlgumAcesso, responsaveisDe } from './permissoes.js';
 import { chaveDia } from './util.js';
-import { conferirArquivo, novoIdAnexo, conferirArquivoPeca, conferirLinkPeca } from './anexos.js';
+import { conferirArquivo, novoIdAnexo, conferirArquivoPeca, conferirLinkPeca, conferirArquivoMaterial } from './anexos.js';
 import { TABELA } from './orcamento-tabela.js';
 
 export const modo = 'demo';
@@ -122,7 +122,24 @@ function semente() {
         pagamento: 'Pix ou cartão.', prazo: '', revisoes: '', incluso: '', naoIncluso: '', obs: '', mostrarAceite: true, responsavel: 'Pablo Caetano · LOOK', cnpj: '68.954.688/0001-82', contatoLook: '' },
       total_unico: 3000, total_mensal: 1599.99, criado_por: pablo, criado_em: agora, atualizado_em: agora },
   ];
-  return { perfis, permissoes, clientes, projetos, tarefas, comentarios, avisos, anexos: [], briefings: [], lancamentos, notas: {}, orcamentos, ...cadastrosIniciais(pablo, rafa, agora), ...pecasIniciais(pablo, marina, agora), gravacoes: gravacoesIniciais(pablo, rafa, agora) };
+  return { perfis, permissoes, clientes, projetos, tarefas, comentarios, avisos, anexos: [], briefings: [], lancamentos, notas: {}, orcamentos, ...cadastrosIniciais(pablo, rafa, agora), ...pecasIniciais(pablo, marina, agora), gravacoes: gravacoesIniciais(pablo, rafa, agora),
+    materiais: [
+      { id: novoId(), titulo: 'Logo LOOK (todas as versões)', categoria: 'logos', cliente_id: null, descricao: 'Versões preta e branca, horizontal e assinatura.', caminho: 'demo/logo.png', link: '', nome: 'logo-look.png', tipo: 'image/png', tamanho: 24000, criado_por: pablo, criado_em: agora },
+      { id: novoId(), titulo: 'Modelo de contrato de prestação de serviço', categoria: 'modelos', cliente_id: null, descricao: '', caminho: null, link: 'https://docs.google.com/', nome: '', tipo: '', tamanho: 0, criado_por: pablo, criado_em: agora },
+      { id: novoId(), titulo: 'Paleta e fontes Flambé', categoria: 'identidade', cliente_id: 'c-flambe', descricao: 'Bordeaux, Creme, Carvão.', caminho: null, link: 'https://drive.google.com/', nome: '', tipo: '', tamanho: 0, criado_por: pablo, criado_em: agora },
+    ],
+    arquivosMateriais: { 'demo/logo.png': 'img/logo-horizontal-branca.png' },
+    mensagens: [{ id: novoId(), projeto_id: 'p-lotus', autor_id: marina, texto: 'O cliente pediu para adiantar o post de lançamento para sexta.', criado_em: agora }],
+    horas: [
+      hora(pablo, tarefas[0], 60, 'Reunião de valores com a Lotus', agora),
+      hora(marina, tarefas[2], 150, 'Duas opções de dourado para a medalha', agora),
+      hora(rafa, tarefas[4], 120, 'Edição do primeiro reels', agora),
+      { ...hora(pablo, null, 90, 'Direção de arte', agora), projeto_id: 'p-flambe' },
+    ] };
+}
+
+function hora(usuario_id, tarefa, minutos, descricao, agora) {
+  return { id: novoId(), usuario_id, projeto_id: tarefa?.projeto_id ?? null, tarefa_id: tarefa?.id ?? null, data: diaRelativo(0), minutos, descricao, criado_em: agora, atualizado_em: agora };
 }
 
 // Produtos (a tabela de preços padrão), fornecedores e equipamentos de exemplo.
@@ -189,7 +206,7 @@ export async function iniciar() {
   } catch { /* sem armazenamento */ }
   for (const t of banco?.tarefas ?? []) t.responsaveis ??= t.responsavel_id ? [t.responsavel_id] : [];
   for (const p of banco?.projetos ?? []) p.briefing ??= 'dispensado';
-  if (banco) { banco.briefings ??= []; banco.lancamentos ??= []; banco.notas ??= {}; banco.orcamentos ??= []; banco.produtos ??= produtosIniciais(new Date().toISOString()); banco.fornecedores ??= []; banco.equipamentos ??= []; banco.pecas ??= []; banco.peca_versoes ??= []; banco.arquivosPecas ??= {}; banco.gravacoes ??= []; }
+  if (banco) { banco.briefings ??= []; banco.lancamentos ??= []; banco.notas ??= {}; banco.orcamentos ??= []; banco.produtos ??= produtosIniciais(new Date().toISOString()); banco.fornecedores ??= []; banco.equipamentos ??= []; banco.pecas ??= []; banco.peca_versoes ??= []; banco.arquivosPecas ??= {}; banco.gravacoes ??= []; banco.materiais ??= []; banco.arquivosMateriais ??= {}; banco.mensagens ??= []; banco.horas ??= []; }
   if (banco && !banco.gravacoes.some((x) => x.equipamentos.length)) {
     const camera = banco.equipamentos.find((e) => e.categoria === 'Câmera');
     if (camera && banco.gravacoes[0]) banco.gravacoes[0].equipamentos = [camera.id];
@@ -241,7 +258,10 @@ function visivel(tabela, linha, s) {
     case 'fornecedores': return pode(s, 'fornecedores', 'ver');
     case 'equipamentos': return pode(s, 'equipamentos', 'ver');
     case 'pecas': case 'peca_versoes': return pode(s, 'criacao', 'ver');
+    case 'materiais': return pode(s, 'materiais', 'ver');
+    case 'mensagens': return s.perfil.ativo && banco.projetos.some((p) => p.id === linha.projeto_id && visivel('projetos', p, s));
     case 'gravacoes': return pode(s, 'execucao', 'ver') || (s.perfil.ativo && linha.equipe.includes(eu));
+    case 'horas': return s.perfil.ativo && (linha.usuario_id === eu || pode(s, 'horas', 'ver'));
     default: return false;
   }
 }
@@ -342,6 +362,26 @@ function avisarGravacao(g, antes, eu) {
   }
 }
 
+// Igual ao banco: minutos de 1 a 24 h, projeto e tarefa visíveis; a tarefa define o projeto.
+function arrumarHora(h, s) {
+  h.minutos = Number(h.minutos);
+  if (!Number.isInteger(h.minutos) || h.minutos < 1 || h.minutos > 1440) throw new Error('Confira a duração: de 1 minuto a 24 horas.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(h.data ?? '') || h.data < '2000-01-01' || h.data > '2100-12-31') throw new Error('Confira a data.');
+  h.descricao = String(h.descricao ?? '').trim();
+  if (h.descricao.length > 1000) throw new Error('Descrição grande demais (até mil letras).');
+  const tarefa = h.tarefa_id && banco.tarefas.find((t) => t.id === h.tarefa_id);
+  if (h.tarefa_id && !(tarefa && podeVerTarefa(s, tarefa))) negar();
+  if (tarefa?.projeto_id) h.projeto_id = tarefa.projeto_id;
+  const projeto = h.projeto_id && banco.projetos.find((p) => p.id === h.projeto_id);
+  if (h.projeto_id && !(projeto && visivel('projetos', projeto, s))) negar();
+  h.projeto_id ||= null; h.tarefa_id ||= null;
+}
+
+function conferirMaterial(m) {
+  if (!String(m.titulo ?? '').trim() || m.titulo.length > 200 || (m.descricao ?? '').length > 5000) throw new Error('Preencha o nome do material (até 200 letras).');
+  if (!CATEGORIAS_MATERIAL.some((c) => c.chave === m.categoria)) throw new Error('Categoria inválida.');
+}
+
 const novoToken = () => Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
 
 function avisar(usuario_id, texto, tarefa_id, projeto_id = null) {
@@ -393,6 +433,23 @@ export async function inserir(tabela, dados) {
     if (tabela === 'fornecedores') Object.assign(linha, { categoria: '', contato: '', telefone: '', email: '', site: '', cidade: '', observacoes: '', ...dados, criado_por: eu });
     conferirCadastro(tabela, linha);
     linha.atualizado_em = linha.criado_em;
+  } else if (tabela === 'mensagens') {
+    const projeto = banco.projetos.find((p) => p.id === linha.projeto_id);
+    if (!s.perfil.ativo || !projeto || !visivel('projetos', projeto, s)) negar();
+    if (!String(linha.texto ?? '').trim() || linha.texto.length > 5000) throw new Error('Escreva a mensagem (até 5 mil letras).');
+    linha.autor_id = eu;
+    for (const p of banco.perfis) {
+      const primeiro = p.nome.split(' ')[0];
+      const vê = p.admin || banco.permissoes.some((x) => x.usuario_id === p.id && x.modulo === 'projetos' && x.ver);
+      if (p.ativo && p.id !== eu && primeiro && vê && linha.texto.toLowerCase().includes(`@${primeiro.toLowerCase()}`)) {
+        avisar(p.id, `${s.perfil.nome} marcou você na conversa do projeto: ${projeto.nome}`, null, projeto.id);
+      }
+    }
+  } else if (tabela === 'horas') {
+    if (!s.perfil.ativo) negar();
+    Object.assign(linha, { projeto_id: null, tarefa_id: null, data: chaveDia(new Date()), descricao: '', ...dados, atualizado_em: linha.criado_em });
+    if (!s.perfil.admin || !banco.perfis.some((p) => p.id === linha.usuario_id)) linha.usuario_id = eu;
+    arrumarHora(linha, s);
   } else if (tabela === 'gravacoes') {
     if (!pode(s, 'execucao', 'criar')) negar();
     Object.assign(linha, { projeto_id: null, fim: null, local: '', equipe: [], equipamentos: [], checklist: [], observacoes: '', status: 'agendada', ...dados, criado_por: eu, atualizado_em: linha.criado_em });
@@ -459,6 +516,17 @@ export async function atualizar(tabela, id, mudancas) {
     const { criado_por: _p, criado_em: _c, ...resto } = mudancas;
     mudancas = { ...resto, atualizado_em: new Date().toISOString() };
     conferirCadastro(tabela, { ...linha, ...mudancas });
+  } else if (tabela === 'horas') {
+    if (!s.perfil.ativo || (linha.usuario_id !== s.perfil.id && !pode(s, 'horas', 'editar'))) negar();
+    const { usuario_id: _u, criado_em: _c, ...resto } = mudancas;
+    const nova = { ...linha, ...resto, atualizado_em: new Date().toISOString() };
+    arrumarHora(nova, s);
+    mudancas = nova;
+  } else if (tabela === 'materiais') {
+    if (!pode(s, 'materiais', 'editar')) negar();
+    const { titulo, categoria, cliente_id, descricao } = { ...linha, ...mudancas };
+    conferirMaterial({ titulo, categoria, descricao });
+    mudancas = { titulo, categoria, cliente_id: cliente_id || null, descricao };
   } else if (tabela === 'gravacoes') {
     // Igual ao banco: quem está na equipe sem "editar" só marca o checklist e a situação.
     if (!pode(s, 'execucao', 'editar')) {
@@ -510,6 +578,9 @@ export async function apagar(tabela, id) {
     equipamentos: () => pode(s, 'equipamentos', 'apagar'),
     pecas: () => pode(s, 'criacao', 'apagar'),
     gravacoes: () => pode(s, 'execucao', 'apagar'),
+    materiais: () => pode(s, 'materiais', 'apagar') || (linha.criado_por === s.perfil.id && pode(s, 'materiais', 'criar')),
+    mensagens: () => (linha.autor_id === s.perfil.id && s.perfil.ativo) || s.perfil.admin,
+    horas: () => (linha.usuario_id === s.perfil.id && s.perfil.ativo) || pode(s, 'horas', 'apagar'),
     peca_versoes: () => pode(s, 'criacao', 'apagar') || (linha.enviado_por === s.perfil.id && linha.resposta === 'aguardando'),
     comentarios: () => linha.autor_id === s.perfil.id || s.perfil.admin,
     avisos: () => true,
@@ -537,6 +608,12 @@ export async function apagar(tabela, id) {
     banco.avisos = banco.avisos.filter((a) => !pecasFora.includes(a.peca_id));
   }
   if (tabela === 'peca_versoes' && linha.caminho) delete banco.arquivosPecas[linha.caminho];
+  if (tabela === 'materiais' && linha.caminho) delete banco.arquivosMateriais[linha.caminho];
+  if (tabela === 'projetos') banco.mensagens = banco.mensagens.filter((m) => m.projeto_id !== id);
+  if (tabela === 'perfis') banco.horas = banco.horas.filter((h) => h.usuario_id !== id);
+  if (tabela === 'projetos') banco.horas.forEach((h) => { if (h.projeto_id === id) h.projeto_id = null; });
+  if (tabela === 'tarefas') banco.horas.forEach((h) => { if (h.tarefa_id === id) h.tarefa_id = null; });
+  if (tabela === 'clientes') banco.materiais.forEach((m) => { if (m.cliente_id === id) m.cliente_id = null; });
   if (tabela === 'gravacoes') banco.avisos = banco.avisos.filter((a) => a.gravacao_id !== id);
   if (tabela === 'projetos') banco.gravacoes.forEach((g) => { if (g.projeto_id === id) g.projeto_id = null; });
   salvar();
@@ -741,4 +818,32 @@ export async function responderPeca(token, resposta, comentario, nome) {
     }
   }
   salvar();
+}
+
+// ---------- Banco de materiais (arquivo guardado neste navegador) ----------
+export async function enviarMaterial(dados, arquivo) {
+  const s = await sessao();
+  if (!pode(s, 'materiais', 'criar')) negar();
+  const cliente = dados.cliente_id && banco.clientes.find((c) => c.id === dados.cliente_id);
+  if (dados.cliente_id && !(cliente && visivel('clientes', cliente, s))) negar();
+  const id = novoIdAnexo();
+  const m = { id, titulo: '', categoria: 'outros', cliente_id: null, descricao: '', caminho: null, link: '', nome: '', tipo: '', tamanho: 0, ...dados, criado_por: s.perfil.id, criado_em: new Date().toISOString() };
+  conferirMaterial(m);
+  if (arquivo) {
+    const { tipo, ext } = conferirArquivoMaterial(arquivo);
+    if (arquivo.size > LIMITE_DEMO) throw new Error('Na demonstração o limite é 2 MB por arquivo (no sistema de verdade, 50 MB).');
+    Object.assign(m, { link: '', caminho: `${id}/${novoIdAnexo()}.${ext}`, nome: arquivo.name.slice(0, 255), tipo, tamanho: arquivo.size });
+    banco.arquivosMateriais[m.caminho] = await lerComoDataUrl(arquivo);
+  } else m.link = conferirLinkPeca(dados.link);
+  banco.materiais.push(m);
+  salvar();
+  return structuredClone(m);
+}
+
+export async function linksMateriais(materiais) {
+  return Object.fromEntries(materiais.filter((m) => m.caminho).map((m) => {
+    const guardado = banco.arquivosMateriais[m.caminho];
+    const url = !guardado ? '' : guardado.startsWith('data:') ? URL.createObjectURL(blobDe(guardado)) : guardado;
+    return [m.id, { abrir: url, baixar: url }];
+  }));
 }

@@ -1,7 +1,7 @@
 // Modo online: conversa com o banco no Supabase. As regras de quem vê o
 // quê estão no próprio banco (supabase/schema.sql).
 import { CONFIG } from './config.js';
-import { conferirArquivo, novoIdAnexo, conferirArquivoPeca, conferirLinkPeca } from './anexos.js';
+import { conferirArquivo, novoIdAnexo, conferirArquivoPeca, conferirLinkPeca, conferirArquivoMaterial } from './anexos.js';
 
 export const modo = 'online';
 let sb = null;
@@ -54,6 +54,13 @@ function traduzirErro(msg) {
   if (/gravacoes_horario/i.test(msg)) return 'Confira o dia e o horário: o fim precisa ser depois do início.';
   if (/gravacoes_status/i.test(msg)) return 'Situação de gravação inválida.';
   if (/gravacoes_checklist|Item de checklist/i.test(msg)) return 'Confira os itens do checklist (até 100, cada um com até 300 letras).';
+  if (/materiais_tamanhos/i.test(msg)) return 'Preencha o nome do material (até 200 letras).';
+  if (/materiais_origem/i.test(msg)) return 'Envie um arquivo aceito (até 50 MB) ou um link https.';
+  if (/materiais_categoria/i.test(msg)) return 'Categoria inválida.';
+  if (/mensagens_tamanhos/i.test(msg)) return 'Escreva a mensagem (até 5 mil letras).';
+  if (/horas_minutos/i.test(msg)) return 'Confira a duração: de 1 minuto a 24 horas.';
+  if (/horas_tamanhos/i.test(msg)) return 'Descrição grande demais (até mil letras).';
+  if (/horas_data/i.test(msg)) return 'Confira a data.';
   if (/Failed to fetch|NetworkError/i.test(msg)) return 'Sem conexão com o servidor. Confira a internet e tente de novo.';
   return msg;
 }
@@ -112,6 +119,10 @@ export async function apagar(tabela, id) {
     if (pecas?.length) await removerArquivosPecas(pecas.map((p) => p.id));
   }
   if (tabela === 'pecas') await removerArquivosPecas([id], true);
+  if (tabela === 'materiais') {
+    const m = checar(await sb.from('materiais').select('caminho').eq('id', id).maybeSingle());
+    if (m?.caminho) checar(await sb.storage.from('materiais').remove([m.caminho]));
+  }
   const linhas = checar(await sb.from(tabela).delete().eq('id', id).select('id'));
   if (!linhas.length) throw new Error('Você não tem permissão para isso.');
 }
@@ -242,4 +253,34 @@ export async function abrirPeca(token) {
 
 export async function responderPeca(token, resposta, comentario, nome) {
   checar(await sb.rpc('peca_responder', { p_token: token, p_resposta: resposta, p_comentario: comentario, p_nome: nome }));
+}
+
+// ---------- Banco de materiais (depósito privado "materiais") ----------
+// Registra o material e depois envia o arquivo, com nome sorteado. Se o
+// envio falhar, desfaz o registro.
+export async function enviarMaterial(dados, arquivo) {
+  if (!arquivo) return checar(await sb.from('materiais').insert({ ...dados, link: conferirLinkPeca(dados.link) }).select().single());
+  const { tipo, ext } = conferirArquivoMaterial(arquivo);
+  const id = novoIdAnexo();
+  const caminho = `${id}/${novoIdAnexo()}.${ext}`;
+  const material = checar(await sb.from('materiais').insert({ ...dados, id, link: '', caminho, nome: arquivo.name.slice(0, 255), tipo, tamanho: arquivo.size }).select().single());
+  const { error } = await sb.storage.from('materiais').upload(caminho, arquivo, { contentType: tipo, upsert: false });
+  if (error) {
+    await sb.from('materiais').delete().eq('id', id);
+    throw new Error(/exceeded the maximum allowed size|Payload too large/i.test(error.message)
+      ? 'Arquivo grande demais: o limite é 50 MB. Cadastre como link (Google Drive).' : traduzirErro(error.message));
+  }
+  return material;
+}
+
+// Links que valem por 1 hora: abrir no navegador e baixar com o nome original.
+export async function linksMateriais(materiais) {
+  const comArquivo = materiais.filter((m) => m.caminho);
+  if (!comArquivo.length) return {};
+  const dep = sb.storage.from('materiais');
+  const abrir = checar(await dep.createSignedUrls(comArquivo.map((m) => m.caminho), 3600));
+  const baixar = await Promise.all(comArquivo.map((m) => dep.createSignedUrl(m.caminho, 3600, { download: m.nome })));
+  const links = {};
+  comArquivo.forEach((m, i) => { links[m.id] = { abrir: abrir[i]?.signedUrl ?? '', baixar: baixar[i]?.data?.signedUrl ?? '' }; });
+  return links;
 }
