@@ -31,7 +31,7 @@ insert into public.modulos (chave, nome, fase, ordem) values
   ('equipe',       'Equipe e acessos',     1, 90),
   ('comercial',    'Comercial e orçamentos', 1, 50),
   ('criacao',      'Criação',              1, 60),
-  ('execucao',     'Execução',             3, 70),
+  ('execucao',     'Execução',             1, 70),
   ('fornecedores', 'Fornecedores',         1, 55),
   ('materiais',    'Banco de materiais',   3, 75),
   ('equipamentos', 'Equipamentos',         1, 76),
@@ -482,6 +482,37 @@ insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 values ('pecas', 'pecas', true, 52428800, array['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'video/mp4', 'video/webm', 'video/quicktime'])
 on conflict (id) do update set public = true, file_size_limit = excluded.file_size_limit,
   allowed_mime_types = excluded.allowed_mime_types;
+
+-- ---------------------------------------------------------------------
+-- Execução (desde a 0.11.0): gravações com dia e horário, local, equipe,
+-- equipamentos e checklist. Permissão "execucao"; quem está na equipe de
+-- uma gravação também a vê e marca o checklist.
+-- ---------------------------------------------------------------------
+create table if not exists public.gravacoes (
+  id            uuid primary key default gen_random_uuid(),
+  projeto_id    uuid references public.projetos(id) on delete set null,
+  titulo        text not null,
+  inicio        timestamptz not null,
+  fim           timestamptz,
+  local         text not null default '',
+  equipe        uuid[] not null default '{}',
+  equipamentos  uuid[] not null default '{}',
+  checklist     jsonb not null default '[]'::jsonb,
+  observacoes   text not null default '',
+  status        text not null default 'agendada',
+  criado_por    uuid references public.perfis(id) on delete set null default auth.uid(),
+  criado_em     timestamptz not null default now(),
+  atualizado_em timestamptz not null default now()
+);
+create index if not exists gravacoes_inicio_idx on public.gravacoes (inicio);
+select pg_temp.limite('gravacoes', 'gravacoes_tamanhos', 'char_length(btrim(titulo)) between 1 and 200 and char_length(local) <= 300 and char_length(observacoes) <= 20000 and cardinality(equipe) <= 20 and cardinality(equipamentos) <= 60');
+select pg_temp.limite('gravacoes', 'gravacoes_status', $c$status in ('agendada', 'realizada', 'cancelada')$c$);
+select pg_temp.limite('gravacoes', 'gravacoes_horario', $c$inicio between timestamptz '2000-01-01' and timestamptz '2100-12-31' and (fim is null or (fim >= inicio and fim <= inicio + interval '7 days'))$c$);
+-- Checklist: lista de até 100 itens { "texto": "...", "feito": true/false }.
+select pg_temp.limite('gravacoes', 'gravacoes_checklist', $c$jsonb_typeof(checklist) = 'array' and jsonb_array_length(checklist) <= 100 and pg_column_size(checklist) <= 50000$c$);
+
+-- Aviso de gravação nova abre a gravação.
+alter table public.avisos add column if not exists gravacao_id uuid references public.gravacoes(id) on delete cascade;
 
 -- ---------------------------------------------------------------------
 -- Funções de permissão (usadas pelas políticas abaixo).
@@ -1044,6 +1075,90 @@ drop trigger if exists preparar_versao on public.peca_versoes;
 create trigger preparar_versao before insert or update on public.peca_versoes
   for each row execute function public.preparar_versao();
 
+-- Gravação: autor nunca muda; equipe sem repetidos e só gente da equipe;
+-- equipamentos só os cadastrados (pessoa ou equipamento apagado sai da
+-- lista sozinho); checklist só com itens { texto, feito }.
+-- Quem está na equipe mas não tem "editar" só marca o checklist e a situação.
+create or replace function public.preparar_gravacao() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_item jsonb;
+begin
+  if tg_op = 'INSERT' then
+    if auth.uid() is not null then new.criado_por := auth.uid(); end if;
+    new.criado_em := now();
+  else
+    new.criado_por := old.criado_por;
+    new.criado_em := old.criado_em;
+    if auth.uid() is not null and not public.pode('execucao', 'editar') then
+      -- Só os itens marcados mudam: o texto e a quantidade continuam os mesmos.
+      if jsonb_typeof(new.checklist) <> 'array' or jsonb_array_length(new.checklist) <> jsonb_array_length(old.checklist)
+         or exists (select 1 from jsonb_array_elements(new.checklist) with ordinality n(i, k)
+                    join jsonb_array_elements(old.checklist) with ordinality o(i, k) using (k)
+                    where n.i ->> 'texto' is distinct from o.i ->> 'texto') then
+        raise exception 'Sem permissão de editar, só dá para marcar os itens do checklist.';
+      end if;
+      new := jsonb_populate_record(old, jsonb_build_object('checklist', new.checklist, 'status', new.status));
+    end if;
+  end if;
+  new.atualizado_em := now();
+  new.equipe := coalesce((select array_agg(r order by primeira)
+    from (select r, min(ordem) as primeira from unnest(new.equipe) with ordinality as x(r, ordem)
+          where r in (select id from perfis) group by r) d), '{}');
+  new.equipamentos := coalesce((select array_agg(distinct r) from unnest(new.equipamentos) r
+    where r in (select id from equipamentos)), '{}');
+  if jsonb_typeof(new.checklist) = 'array' then
+    for v_item in select value from jsonb_array_elements(new.checklist) loop
+      if jsonb_typeof(v_item) <> 'object' or jsonb_typeof(v_item -> 'texto') <> 'string'
+         or char_length(btrim(v_item ->> 'texto')) not between 1 and 300
+         or jsonb_typeof(v_item -> 'feito') <> 'boolean'
+         or (select count(*) from jsonb_object_keys(v_item)) <> 2 then
+        raise exception 'Item de checklist inválido.';
+      end if;
+    end loop;
+  end if;
+  return new;
+end $$;
+-- Todo cliente novo já nasce com um projeto "Geral" (desde a 0.11.0), para
+-- dar para criar tarefa na hora, mesmo em trabalho avulso. Clientes que já
+-- existiam sem nenhum projeto ganham o "Geral" uma vez.
+create or replace function public.criar_projeto_geral() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  insert into projetos (cliente_id, nome, tipo, status, briefing, criado_por, descricao)
+  values (new.id, 'Geral', 'Geral', 'ativo', 'dispensado', new.criado_por,
+          'Projeto criado junto com o cliente, para tarefas avulsas e trabalhos menores.');
+  return new;
+end $$;
+drop trigger if exists criar_projeto_geral on public.clientes;
+create trigger criar_projeto_geral after insert on public.clientes
+  for each row execute function public.criar_projeto_geral();
+insert into public.projetos (cliente_id, nome, tipo, status, briefing, criado_por, descricao)
+select c.id, 'Geral', 'Geral', 'ativo', 'dispensado', c.criado_por,
+       'Projeto criado junto com o cliente, para tarefas avulsas e trabalhos menores.'
+from public.clientes c
+where not exists (select 1 from public.projetos p where p.cliente_id = c.id);
+
+drop trigger if exists preparar_gravacao on public.gravacoes;
+create trigger preparar_gravacao before insert or update on public.gravacoes
+  for each row execute function public.preparar_gravacao();
+
+-- Quem entra na equipe de uma gravação recebe um aviso (menos quem marcou).
+create or replace function public.avisar_gravacao() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  insert into avisos (usuario_id, texto, gravacao_id)
+  select r, left('Gravação com você: ' || new.titulo || ' · '
+    || to_char(new.inicio at time zone 'America/Sao_Paulo', 'DD/MM "às" HH24:MI'), 1000), new.id
+  from unnest(new.equipe) r
+  join perfis p on p.id = r and p.ativo
+  where r is distinct from auth.uid()
+    and (tg_op = 'INSERT' or not (r = any(old.equipe)));
+  return new;
+end $$;
+drop trigger if exists avisar_gravacao on public.gravacoes;
+create trigger avisar_gravacao after insert or update on public.gravacoes
+  for each row execute function public.avisar_gravacao();
+
 -- Portas do cliente para a peça (sem login). Só funcionam com o link
 -- certo e só mostram aquela peça e as versões dela.
 create or replace function public.peca_abrir(p_token text) returns jsonb
@@ -1121,10 +1236,11 @@ alter table public.fornecedores enable row level security;
 alter table public.equipamentos enable row level security;
 alter table public.pecas       enable row level security;
 alter table public.peca_versoes enable row level security;
+alter table public.gravacoes   enable row level security;
 
 do $$ declare r record; begin
   for r in select policyname, tablename from pg_policies where schemaname = 'public'
-    and tablename in ('modulos','perfis','permissoes','clientes','projetos','tarefas','comentarios','avisos','ajustes','anexos','briefings','lancamentos','orcamentos','produtos','fornecedores','equipamentos','pecas','peca_versoes')
+    and tablename in ('modulos','perfis','permissoes','clientes','projetos','tarefas','comentarios','avisos','ajustes','anexos','briefings','lancamentos','orcamentos','produtos','fornecedores','equipamentos','pecas','peca_versoes','gravacoes')
   loop execute format('drop policy %I on public.%I', r.policyname, r.tablename); end loop;
 end $$;
 
@@ -1315,6 +1431,19 @@ create policy peca_versoes_apagar on public.peca_versoes for delete to authentic
   using (public.pode('criacao', 'apagar')
          or (enviado_por = auth.uid() and resposta = 'aguardando' and public.pode('criacao', 'ver')));
 
+-- Gravações: permissão "execucao". Quem está na equipe também vê e marca
+-- o checklist (o gatilho deixa só isso). Projeto ligado precisa ser visível.
+create policy gravacoes_ler on public.gravacoes for select to authenticated
+  using (public.pode('execucao', 'ver') or (public.esta_ativo() and auth.uid() = any(equipe)));
+create policy gravacoes_criar on public.gravacoes for insert to authenticated
+  with check (public.pode('execucao', 'criar')
+              and (projeto_id is null or exists (select 1 from public.projetos p where p.id = projeto_id)));
+create policy gravacoes_editar on public.gravacoes for update to authenticated
+  using (public.pode('execucao', 'editar') or (public.esta_ativo() and auth.uid() = any(equipe)))
+  with check (public.pode('execucao', 'editar') or (public.esta_ativo() and auth.uid() = any(equipe)));
+create policy gravacoes_apagar on public.gravacoes for delete to authenticated
+  using (public.pode('execucao', 'apagar'));
+
 -- Os arquivos em si (Storage) seguem a tabela de anexos: só se lê o arquivo
 -- cujo anexo a pessoa vê; só se envia para um caminho que ela mesma acabou
 -- de registrar; só se apaga o que ela pode apagar. Ninguém substitui arquivo.
@@ -1396,6 +1525,9 @@ revoke execute on function public.preparar_orcamento() from authenticated;
 revoke execute on function public.preparar_fornecedor() from authenticated;
 revoke execute on function public.preparar_peca() from authenticated;
 revoke execute on function public.preparar_versao() from authenticated;
+revoke execute on function public.preparar_gravacao() from authenticated;
+revoke execute on function public.avisar_gravacao() from authenticated;
+revoke execute on function public.criar_projeto_geral() from authenticated;
 
 -- Avisa a API do Supabase para reler a estrutura (colunas e funções novas).
 notify pgrst, 'reload schema';

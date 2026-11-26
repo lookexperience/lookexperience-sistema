@@ -1,6 +1,6 @@
 // Modo demonstração: guarda tudo neste navegador e imita as regras do
 // banco, para dar para testar o sistema antes do Supabase estar ligado.
-import { MODULOS, TIPOS_PECA, STATUS_PECA } from './config.js';
+import { MODULOS, TIPOS_PECA, STATUS_PECA, STATUS_GRAVACAO, CHECKLIST_PADRAO } from './config.js';
 import { pode, podeVerTarefa, podeEditarTarefa, temAlgumAcesso, responsaveisDe } from './permissoes.js';
 import { chaveDia } from './util.js';
 import { conferirArquivo, novoIdAnexo, conferirArquivoPeca, conferirLinkPeca } from './anexos.js';
@@ -122,7 +122,7 @@ function semente() {
         pagamento: 'Pix ou cartão.', prazo: '', revisoes: '', incluso: '', naoIncluso: '', obs: '', mostrarAceite: true, responsavel: 'Pablo Caetano · LOOK', cnpj: '68.954.688/0001-82', contatoLook: '' },
       total_unico: 3000, total_mensal: 1599.99, criado_por: pablo, criado_em: agora, atualizado_em: agora },
   ];
-  return { perfis, permissoes, clientes, projetos, tarefas, comentarios, avisos, anexos: [], briefings: [], lancamentos, notas: {}, orcamentos, ...cadastrosIniciais(pablo, rafa, agora), ...pecasIniciais(pablo, marina, agora) };
+  return { perfis, permissoes, clientes, projetos, tarefas, comentarios, avisos, anexos: [], briefings: [], lancamentos, notas: {}, orcamentos, ...cadastrosIniciais(pablo, rafa, agora), ...pecasIniciais(pablo, marina, agora), gravacoes: gravacoesIniciais(pablo, rafa, agora) };
 }
 
 // Produtos (a tabela de preços padrão), fornecedores e equipamentos de exemplo.
@@ -147,6 +147,18 @@ function cadastrosIniciais(pablo, rafa, agora) {
       e('Tripé de vídeo', 'Tripé e suporte', 'disponivel', { local: 'Estúdio LOOK' }),
     ],
   };
+}
+
+// Gravações de exemplo (o equipamento entra pelo nome, depois de criado).
+function gravacoesIniciais(pablo, rafa, agora) {
+  const lista = (feitos) => CHECKLIST_PADRAO.map((texto, i) => ({ texto, feito: i < feitos }));
+  const g = (titulo, dias, h, extra = {}) => ({ id: novoId(), projeto_id: null, titulo, inicio: horaRelativa(dias, h), fim: horaRelativa(dias, h + 3), local: '', equipe: [rafa],
+    equipamentos: [], checklist: lista(0), observacoes: '', status: 'agendada', criado_por: pablo, criado_em: agora, atualizado_em: agora, ...extra });
+  return [
+    g('Reels da inauguração da loja', 2, 14, { projeto_id: 'p-lotus', local: 'Loja Lotus Games, centro', equipe: [rafa, pablo], checklist: lista(2), observacoes: 'Chegar 30 min antes para montar a luz.' }),
+    g('Fotos dos pratos para o cardápio', 6, 10, { projeto_id: 'p-flambe', local: 'Restaurante Flambé' }),
+    g('Depoimentos de clientes', -3, 15, { projeto_id: 'p-lotus', local: 'Estúdio LOOK', status: 'realizada', checklist: lista(7) }),
+  ];
 }
 
 // Peças de exemplo da Criação. Na demonstração o arquivo é uma imagem do próprio sistema.
@@ -177,7 +189,11 @@ export async function iniciar() {
   } catch { /* sem armazenamento */ }
   for (const t of banco?.tarefas ?? []) t.responsaveis ??= t.responsavel_id ? [t.responsavel_id] : [];
   for (const p of banco?.projetos ?? []) p.briefing ??= 'dispensado';
-  if (banco) { banco.briefings ??= []; banco.lancamentos ??= []; banco.notas ??= {}; banco.orcamentos ??= []; banco.produtos ??= produtosIniciais(new Date().toISOString()); banco.fornecedores ??= []; banco.equipamentos ??= []; banco.pecas ??= []; banco.peca_versoes ??= []; banco.arquivosPecas ??= {}; }
+  if (banco) { banco.briefings ??= []; banco.lancamentos ??= []; banco.notas ??= {}; banco.orcamentos ??= []; banco.produtos ??= produtosIniciais(new Date().toISOString()); banco.fornecedores ??= []; banco.equipamentos ??= []; banco.pecas ??= []; banco.peca_versoes ??= []; banco.arquivosPecas ??= {}; banco.gravacoes ??= []; }
+  if (banco && !banco.gravacoes.some((x) => x.equipamentos.length)) {
+    const camera = banco.equipamentos.find((e) => e.categoria === 'Câmera');
+    if (camera && banco.gravacoes[0]) banco.gravacoes[0].equipamentos = [camera.id];
+  }
   if (!banco) { banco = semente(); usuarioAtual = 'u-pablo'; salvar(); }
 }
 
@@ -225,6 +241,7 @@ function visivel(tabela, linha, s) {
     case 'fornecedores': return pode(s, 'fornecedores', 'ver');
     case 'equipamentos': return pode(s, 'equipamentos', 'ver');
     case 'pecas': case 'peca_versoes': return pode(s, 'criacao', 'ver');
+    case 'gravacoes': return pode(s, 'execucao', 'ver') || (s.perfil.ativo && linha.equipe.includes(eu));
     default: return false;
   }
 }
@@ -299,6 +316,32 @@ function conferirPeca(pc, s) {
   if (!projeto || !visivel('projetos', projeto, s)) negar();
 }
 
+// Mesmas regras do banco para as gravações.
+function arrumarGravacao(g) {
+  g.equipe = [...new Set((g.equipe ?? []).filter((id) => banco.perfis.some((p) => p.id === id)))];
+  g.equipamentos = [...new Set((g.equipamentos ?? []).filter((id) => banco.equipamentos.some((e) => e.id === id)))];
+  if (!String(g.titulo ?? '').trim() || g.titulo.length > 200 || (g.local ?? '').length > 300 || (g.observacoes ?? '').length > 20000 || g.equipe.length > 20 || g.equipamentos.length > 60) {
+    throw new Error('Preencha o título da gravação (textos curtos, até 20 pessoas e 60 equipamentos).');
+  }
+  if (!g.inicio || Number.isNaN(Date.parse(g.inicio)) || (g.fim && (Date.parse(g.fim) < Date.parse(g.inicio) || Date.parse(g.fim) - Date.parse(g.inicio) > 7 * 864e5))) {
+    throw new Error('Confira o dia e o horário: o fim precisa ser depois do início.');
+  }
+  if (!STATUS_GRAVACAO.some((x) => x.chave === g.status)) throw new Error('Situação de gravação inválida.');
+  const lista = g.checklist;
+  if (!Array.isArray(lista) || lista.length > 100 || lista.some((i) => !i || typeof i.texto !== 'string' || !i.texto.trim() || i.texto.length > 300 || typeof i.feito !== 'boolean' || Object.keys(i).length !== 2)) {
+    throw new Error('Confira os itens do checklist (até 100, cada um com até 300 letras).');
+  }
+}
+function avisarGravacao(g, antes, eu) {
+  const d = new Date(g.inicio);
+  const quando = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')} às ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+  for (const id of g.equipe) {
+    if (id !== eu && !antes.includes(id) && banco.perfis.find((p) => p.id === id)?.ativo) {
+      banco.avisos.unshift({ id: novoId(), usuario_id: id, texto: `Gravação com você: ${g.titulo} · ${quando}`, tarefa_id: null, gravacao_id: g.id, lido: false, criado_em: new Date().toISOString() });
+    }
+  }
+}
+
 const novoToken = () => Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) => b.toString(16).padStart(2, '0')).join('');
 
 function avisar(usuario_id, texto, tarefa_id, projeto_id = null) {
@@ -312,6 +355,11 @@ export async function inserir(tabela, dados) {
   if (tabela === 'clientes' || tabela === 'projetos') {
     if (!pode(s, tabela, 'criar')) negar();
     linha.criado_por = eu;
+    // Igual ao banco: cliente novo já nasce com o projeto "Geral".
+    if (tabela === 'clientes') {
+      banco.projetos.push({ id: novoId(), cliente_id: linha.id, nome: 'Geral', tipo: 'Geral', status: 'ativo', inicio: null, fim: null, briefing: 'dispensado',
+        descricao: 'Projeto criado junto com o cliente, para tarefas avulsas e trabalhos menores.', criado_por: eu, criado_em: linha.criado_em });
+    }
   } else if (tabela === 'tarefas') {
     if (!pode(s, 'tarefas', 'criar')) negar();
     Object.assign(linha, { criado_por: eu, atualizado_em: linha.criado_em });
@@ -345,6 +393,13 @@ export async function inserir(tabela, dados) {
     if (tabela === 'fornecedores') Object.assign(linha, { categoria: '', contato: '', telefone: '', email: '', site: '', cidade: '', observacoes: '', ...dados, criado_por: eu });
     conferirCadastro(tabela, linha);
     linha.atualizado_em = linha.criado_em;
+  } else if (tabela === 'gravacoes') {
+    if (!pode(s, 'execucao', 'criar')) negar();
+    Object.assign(linha, { projeto_id: null, fim: null, local: '', equipe: [], equipamentos: [], checklist: [], observacoes: '', status: 'agendada', ...dados, criado_por: eu, atualizado_em: linha.criado_em });
+    const projeto = linha.projeto_id && banco.projetos.find((p) => p.id === linha.projeto_id);
+    if (linha.projeto_id && !(projeto && visivel('projetos', projeto, s))) negar();
+    arrumarGravacao(linha);
+    avisarGravacao(linha, [], eu);
   } else if (tabela === 'pecas') {
     if (!pode(s, 'criacao', 'criar')) negar();
     Object.assign(linha, { tipo: 'post', descricao: '', status: 'em_criacao', responsavel_id: null, prazo: null, ...dados, token: novoToken(), criado_por: eu, atualizado_em: linha.criado_em });
@@ -404,6 +459,21 @@ export async function atualizar(tabela, id, mudancas) {
     const { criado_por: _p, criado_em: _c, ...resto } = mudancas;
     mudancas = { ...resto, atualizado_em: new Date().toISOString() };
     conferirCadastro(tabela, { ...linha, ...mudancas });
+  } else if (tabela === 'gravacoes') {
+    // Igual ao banco: quem está na equipe sem "editar" só marca o checklist e a situação.
+    if (!pode(s, 'execucao', 'editar')) {
+      if (!linha.equipe.includes(s.perfil.id)) negar();
+      const nova = mudancas.checklist ?? linha.checklist;
+      if (!Array.isArray(nova) || nova.length !== linha.checklist.length || nova.some((i, k) => i?.texto !== linha.checklist[k].texto)) {
+        throw new Error('Sem permissão de editar, só dá para marcar os itens do checklist.');
+      }
+      mudancas = { checklist: nova, status: mudancas.status ?? linha.status };
+    }
+    const { criado_por: _p, criado_em: _c, ...resto } = mudancas;
+    const nova = { ...linha, ...resto, atualizado_em: new Date().toISOString() };
+    arrumarGravacao(nova);
+    avisarGravacao(nova, linha.equipe, s.perfil.id);
+    mudancas = nova;
   } else if (tabela === 'pecas') {
     if (!pode(s, 'criacao', 'editar')) negar();
     const { token: _t, criado_por: _p, criado_em: _c, ...resto } = mudancas;
@@ -439,6 +509,7 @@ export async function apagar(tabela, id) {
     fornecedores: () => pode(s, 'fornecedores', 'apagar'),
     equipamentos: () => pode(s, 'equipamentos', 'apagar'),
     pecas: () => pode(s, 'criacao', 'apagar'),
+    gravacoes: () => pode(s, 'execucao', 'apagar'),
     peca_versoes: () => pode(s, 'criacao', 'apagar') || (linha.enviado_por === s.perfil.id && linha.resposta === 'aguardando'),
     comentarios: () => linha.autor_id === s.perfil.id || s.perfil.admin,
     avisos: () => true,
@@ -466,6 +537,8 @@ export async function apagar(tabela, id) {
     banco.avisos = banco.avisos.filter((a) => !pecasFora.includes(a.peca_id));
   }
   if (tabela === 'peca_versoes' && linha.caminho) delete banco.arquivosPecas[linha.caminho];
+  if (tabela === 'gravacoes') banco.avisos = banco.avisos.filter((a) => a.gravacao_id !== id);
+  if (tabela === 'projetos') banco.gravacoes.forEach((g) => { if (g.projeto_id === id) g.projeto_id = null; });
   salvar();
 }
 

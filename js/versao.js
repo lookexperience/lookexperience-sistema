@@ -2,6 +2,18 @@
 // entrada no topo desta lista; a tela "Sobre o sistema" mostra tudo.
 export const HISTORICO = [
   {
+    versao: '0.11.0',
+    data: '2026-11-26',
+    titulo: 'Execução: gravações',
+    itens: [
+      'Nova tela "Execução": as gravações por dia, com horário, local, projeto, equipe, equipamentos e checklist',
+      'Checklist pronto (baterias, cartões, lentes, microfone, roteiro, autorização de imagem, backup), com itens para marcar, tirar ou acrescentar',
+      'Equipamento já reservado em outra gravação no mesmo horário aparece com aviso',
+      'Quem entra na equipe recebe aviso com dia e hora; quem está na equipe vê a gravação e marca o checklist, mesmo sem a permissão "Execução"',
+      'Todo cliente novo já vem com um projeto "Geral", para criar tarefa na hora (os clientes que estavam sem projeto também ganharam um)',
+    ],
+  },
+  {
     versao: '0.10.0',
     data: '2026-11-26',
     titulo: 'Criação com aprovação do cliente',

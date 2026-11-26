@@ -517,3 +517,25 @@ label.marcar { display: flex; gap: 8px; align-items: center; text-transform: non
 .aprovacao-publica .versao-antiga h3 { margin: 0; font-size: 16px; }
 .aprovacao-publica .versao-antiga .previa { max-height: 50vh; }
 #filtro-cliente-peca { max-width: 320px; }
+
+/* ---------- Execução: gravações ---------- */
+.lista-gravacoes { padding: 6px 18px 18px; }
+.dia-gravacoes h3 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--latao); margin: 18px 0 8px; }
+.gravacao { display: flex; align-items: center; gap: 14px; padding: 10px 12px; border: 1px solid var(--linha); border-left: 3px solid var(--cor-cliente, var(--linha)); border-radius: 8px; background: var(--painel-2); margin-bottom: 8px; cursor: pointer; flex-wrap: wrap; }
+.gravacao:hover { border-color: var(--linha-forte); border-left-color: var(--cor-cliente, var(--linha-forte)); }
+.gravacao .horario { flex: none; width: 64px; display: grid; font-weight: 700; }
+.gravacao .horario .fraco { font-weight: 400; font-size: 12px; }
+.gravacao .info { flex: 1 1 220px; min-width: 0; }
+.gravacao .rodape { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.etiqueta.checklist-ok { color: var(--preto); background: var(--latao); border-color: var(--latao); }
+.etiqueta.grav-cancelada { color: var(--texto-3); text-decoration: line-through; }
+.campo.horarios { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.item-checklist { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 6px; }
+.item-checklist:hover { background: var(--painel-2); }
+.item-checklist label.marcar { flex: 1; color: var(--texto); }
+.item-checklist input:checked + .texto-item { text-decoration: line-through; color: var(--texto-3); }
+.novo-item { display: flex; gap: 8px; margin-top: 8px; }
+.novo-item input { flex: 1; min-width: 0; }
+.aviso-conflito { color: var(--latao); font-size: 13px; margin-top: 6px; }
+.escolha-pessoas .pessoa.equip .fraco { margin-left: 4px; }

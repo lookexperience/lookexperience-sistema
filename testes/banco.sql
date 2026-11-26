@@ -732,6 +732,60 @@ select teste.ok(teste.linhas($$delete from pecas where id = '80000000-0000-0000-
 select teste.ok((select count(*) = 0 from peca_versoes where peca_id = '80000000-0000-0000-0000-000000000001'), 'As versões saem junto com a peça');
 delete from permissoes where usuario_id = '00000000-0000-0000-0000-0000000000bb' and modulo = 'criacao';
 
+-- ---------------------------------------------------------------------
+-- Cliente novo já nasce com o projeto "Geral"
+-- ---------------------------------------------------------------------
+select teste.ok((select count(*) = 0 from clientes c where not exists (select 1 from projetos p where p.cliente_id = c.id)), 'Todo cliente tem pelo menos um projeto (os antigos ganharam o "Geral")');
+select teste.ok(teste.linhas($$insert into clientes (id, nome) values ('10000000-0000-0000-0000-0000000000c9', 'Freela Avulso')$$) = 1, 'Admin cria cliente novo');
+select teste.ok((select count(*) = 1 from projetos where cliente_id = '10000000-0000-0000-0000-0000000000c9' and nome = 'Geral' and status = 'ativo' and briefing = 'dispensado'), 'Cliente novo já vem com o projeto "Geral", sem pedir briefing');
+select teste.ok(teste.linhas($$insert into tarefas (titulo, setor, projeto_id) select 'Arte avulsa', 'criacao', id from projetos where cliente_id = '10000000-0000-0000-0000-0000000000c9'$$) = 1, 'Dá para criar tarefa no cliente novo na hora');
+
+-- ---------------------------------------------------------------------
+-- Execução: gravações com equipe, equipamentos e checklist
+-- ---------------------------------------------------------------------
+select teste.ok(teste.linhas($$insert into gravacoes (id, projeto_id, titulo, inicio, fim, local, equipe, equipamentos, checklist, criado_por) values ('90000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'Gravação na loja', '2026-12-01 14:00-03', '2026-12-01 17:00-03', 'Loja Lotus', array['00000000-0000-0000-0000-0000000000cc'::uuid, '00000000-0000-0000-0000-0000000000cc'::uuid, '00000000-0000-0000-0000-0000000000aa'::uuid], array['72000000-0000-0000-0000-000000000001'::uuid], '[{"texto": "Bateria carregada", "feito": false}, {"texto": "Cartão formatado", "feito": false}]', '00000000-0000-0000-0000-0000000000bb')$$) = 1, 'Admin agenda gravação com equipe, equipamento e checklist');
+select teste.ok((select equipe = array['00000000-0000-0000-0000-0000000000cc'::uuid, '00000000-0000-0000-0000-0000000000aa'::uuid] and criado_por = '00000000-0000-0000-0000-0000000000aa' from gravacoes where id = '90000000-0000-0000-0000-000000000001'), 'Equipe sem repetidos e autor é quem agendou');
+select teste.ok((select count(*) = 0 from avisos where gravacao_id = '90000000-0000-0000-0000-000000000001' and usuario_id = '00000000-0000-0000-0000-0000000000aa'), 'Quem agendou não avisa a si mesmo');
+select teste.ok(teste.linhas($$insert into gravacoes (id, titulo, inicio, equipe, equipamentos) values ('90000000-0000-0000-0000-000000000002', 'x', now(), array['99999999-0000-0000-0000-000000000000'::uuid], array['99999999-0000-0000-0000-000000000000'::uuid])$$) = 1, 'Gravação com pessoa e equipamento inexistentes (comando)');
+select teste.ok((select cardinality(equipe) = 0 and cardinality(equipamentos) = 0 from gravacoes where id = '90000000-0000-0000-0000-000000000002'), 'Equipe e equipamentos guardam só quem e o que existe');
+delete from gravacoes where id = '90000000-0000-0000-0000-000000000002';
+select teste.ok(teste.linhas($$insert into gravacoes (titulo, inicio, fim) values ('x', '2026-12-01 14:00-03', '2026-12-01 10:00-03')$$) = -1, 'Fim antes do início é recusado');
+select teste.ok(teste.linhas($$insert into gravacoes (titulo, inicio, checklist) values ('x', now(), '[{"texto": "<b>", "feito": "sim", "extra": 1}]')$$) = -1, 'Ataque: item de checklist fora do formato é recusado');
+select teste.ok(teste.linhas($$insert into gravacoes (titulo, inicio, status) values ('x', now(), 'sumiu')$$) = -1, 'Situação de gravação inventada é recusada');
+
+select teste.como('00000000-0000-0000-0000-0000000000cc');
+select teste.ok((select count(*) = 1 from gravacoes), 'Freelancer da equipe vê a gravação dele (sem permissão de Execução)');
+select teste.ok((select count(*) = 1 from avisos where gravacao_id = '90000000-0000-0000-0000-000000000001' and usuario_id = '00000000-0000-0000-0000-0000000000cc' and texto like 'Gravação com você: Gravação na loja · 01/12 às 14:00'), 'Quem entra na equipe recebe aviso com dia e hora');
+select teste.ok(teste.linhas($$update gravacoes set checklist = jsonb_set(checklist, '{0,feito}', 'true') where id = '90000000-0000-0000-0000-000000000001'$$) = 1, 'Freelancer da equipe marca item do checklist');
+select teste.ok((select checklist -> 0 ->> 'feito' = 'true' from gravacoes where id = '90000000-0000-0000-0000-000000000001'), 'Item marcado fica salvo');
+select teste.ok(teste.linhas($$update gravacoes set titulo = 'mudei', local = 'outro', equipe = array['00000000-0000-0000-0000-0000000000cc'::uuid] where id = '90000000-0000-0000-0000-000000000001'$$) = 1, 'Freelancer tenta mudar a gravação (comando)');
+select teste.ok((select titulo = 'Gravação na loja' and local = 'Loja Lotus' and cardinality(equipe) = 2 from gravacoes where id = '90000000-0000-0000-0000-000000000001'), 'Sem "editar", título, local e equipe não mudam');
+select teste.ok(teste.linhas($$update gravacoes set checklist = '[{"texto": "Outro", "feito": true}]' where id = '90000000-0000-0000-0000-000000000001'$$) = -1, 'Sem "editar", não troca os itens do checklist');
+select teste.ok(teste.linhas($$insert into gravacoes (titulo, inicio) values ('x', now())$$) = -1, 'Sem permissão, não agenda gravação');
+select teste.ok(teste.linhas($$delete from gravacoes$$) = 0, 'Sem permissão, não apaga gravação');
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok((select count(*) = 0 from gravacoes), 'Gerente fora da equipe e sem permissão não vê a gravação');
+select teste.ok(teste.linhas($$update gravacoes set titulo = 'x'$$) = 0, 'Gerente fora da equipe não muda a gravação');
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+insert into permissoes values ('00000000-0000-0000-0000-0000000000bb', 'execucao', true, true, true, false, 'proprias');
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok((select count(*) = 1 from gravacoes), 'Com "execução", vê as gravações');
+select teste.ok(teste.linhas($$update gravacoes set equipe = equipe || '00000000-0000-0000-0000-0000000000bb'::uuid, local = 'Estúdio' where id = '90000000-0000-0000-0000-000000000001'$$) = 1, 'Com "editar", muda local e equipe');
+select teste.ok((select count(*) = 0 from avisos where gravacao_id = '90000000-0000-0000-0000-000000000001' and usuario_id = '00000000-0000-0000-0000-0000000000bb'), 'Quem se coloca na equipe não recebe aviso de si mesmo');
+select teste.ok(teste.linhas($$delete from gravacoes$$) = 0, 'Sem "apagar", não apaga gravação');
+select teste.como('00000000-0000-0000-0000-0000000000cc');
+select teste.ok((select count(*) = 1 from avisos where gravacao_id = '90000000-0000-0000-0000-000000000001' and usuario_id = '00000000-0000-0000-0000-0000000000cc'), 'Quem já estava na equipe não recebe aviso de novo');
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+delete from permissoes where usuario_id = '00000000-0000-0000-0000-0000000000bb' and modulo = 'execucao';
+select teste.ok(teste.linhas($$delete from gravacoes where id = '90000000-0000-0000-0000-000000000001'$$) = 1, 'Admin apaga gravação');
+reset role;
+set role anon;
+select teste.como(null);
+select teste.ok(teste.linhas($$select * from gravacoes$$) = -1, 'Ataque: visitante sem login não lê gravações');
+reset role;
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+
 -- Visitante sem login chamando as funções do banco direto pela API
 reset role;
 set role anon;

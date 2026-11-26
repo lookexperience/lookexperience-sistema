@@ -42,7 +42,7 @@ async function teste(nome, fn) {
     if (errosDaPagina.length) throw new Error(`erro no navegador: ${errosDaPagina.join(' | ')}`);
     resultados.push({ ok: true, nome });
   } catch (err) {
-    resultados.push({ ok: false, nome, detalhe: err.message.split('\n')[0] });
+    resultados.push({ ok: false, nome, detalhe: err.message.split("\n")[0] }); if (process.env.DEPURAR) await p.screenshot({ path: join(CAPTURAS, `falha-${resultados.length}.png`) }).catch(() => {});
   }
 }
 function confere(cond, msg) { if (!cond) throw new Error(msg); }
@@ -103,7 +103,7 @@ await teste('Site envia a política de segurança (CSP) do Netlify', async () =>
 });
 
 await teste('Admin: sistema abre e mostra o menu completo', async () => {
-  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Criação', 'Orçamentos', 'Produtos', 'Fornecedores', 'Equipamentos', 'Finanças', 'Apresentações', 'Equipe e acessos'], 'menu');
+  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Criação', 'Execução', 'Orçamentos', 'Produtos', 'Fornecedores', 'Equipamentos', 'Finanças', 'Apresentações', 'Equipe e acessos'], 'menu');
 });
 
 for (const rota of ['visao-geral', 'atividades', 'calendario', 'clientes', 'projetos', 'criacao', 'financas', 'apresentacoes', 'equipe', 'sobre']) {
@@ -267,14 +267,18 @@ await teste('Admin: tarefa com cliente exige escolher um projeto', async () => {
   await fecharModal();
 });
 
-await teste('Admin: cliente sem projeto mostra o aviso na tarefa', async () => {
+await teste('Admin: cliente novo já vem com o projeto "Geral" e a tarefa sai na hora', async () => {
   await ir('clientes');
   await p.click('#novo'); await p.fill('[name=nome]', 'Cliente Vazio'); await p.click('#salvar'); await p.waitForTimeout(200);
   await ir('atividades');
   await p.click('#nova');
+  await p.fill('[name=titulo]', 'Arte avulsa');
   await p.selectOption('[name=cliente_id]', { label: 'Cliente Vazio' });
-  confere((await p.textContent('#aviso-projeto')).includes('ainda não tem projeto'), 'aviso não apareceu');
-  await fecharModal();
+  igual(await p.$eval('[name=projeto_id]', (s) => s.options[s.selectedIndex].text), 'Geral', 'projeto escolhido');
+  igual(await p.textContent('#aviso-projeto'), '', 'aviso de cliente sem projeto');
+  await p.click('#salvar-tarefa'); await p.waitForTimeout(200);
+  igual(await p.locator('.modal').count(), 0, 'tarefa não foi criada');
+  confere((await cartoes('a_fazer')).includes('Arte avulsa'), 'tarefa não aparece no quadro');
 });
 
 await teste('Admin: cria tarefa escolhendo cliente e projeto', async () => {
@@ -454,7 +458,9 @@ await teste('Admin: muda a cor do cliente na janela de Projetos', async () => {
 
 await teste('Admin: projetos mostram as tarefas em lista e criam tarefa no projeto', async () => {
   confere(await p.locator('.janela-cliente:has-text("Padaria Teste") .tarefa-linha', { hasText: 'Fotos do cardápio' }).count(), 'tarefa não listada no projeto');
-  await p.click('.janela-cliente:has-text("Padaria Teste") [data-nova-tarefa]');
+  // O cliente tem o "Geral" (criado junto) e o "Cardápio novo": usa o botão do segundo.
+  const idCardapio = await p.getAttribute('tr[data-id]:has-text("Cardápio novo")', 'data-id');
+  await p.click(`[data-nova-tarefa="${idCardapio}"]`);
   igual(await p.locator('[name=projeto_id] option:checked').textContent(), 'Cardápio novo', 'projeto já escolhido');
   await fecharModal();
 });
@@ -698,8 +704,8 @@ await teste('Gerente: cria projeto', async () => {
 // =====================================================================
 await comoUsuario('u-rafa');
 
-await teste('Freelancer: menu só com Visão geral, Atividades, Calendário, Finanças e Apresentações', async () => {
-  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Finanças', 'Apresentações'], 'menu');
+await teste('Freelancer: menu só com Visão geral, Atividades, Calendário, Execução (está numa gravação), Finanças e Apresentações', async () => {
+  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Execução', 'Finanças', 'Apresentações'], 'menu');
 });
 
 await teste('Freelancer: vê só as tarefas dele', async () => {
@@ -1177,7 +1183,7 @@ await teste('Equipamentos e fornecedores: gerente sem permissão não vê; com "
 await teste('Celular: telas cabem na largura (sem rolagem para o lado)', async () => {
   await comoUsuario('u-pablo');
   await p.setViewportSize({ width: 390, height: 844 });
-  for (const rota of ['visao-geral', 'clientes', 'projetos', 'criacao', 'financas', 'orcamentos', 'produtos', 'fornecedores', 'equipamentos']) {
+  for (const rota of ['visao-geral', 'clientes', 'projetos', 'criacao', 'execucao', 'financas', 'orcamentos', 'produtos', 'fornecedores', 'equipamentos']) {
     await ir(rota);
     const sobra = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     confere(sobra <= 1, `${rota} passa ${sobra}px da tela`);
@@ -1426,6 +1432,86 @@ await teste('Admin: apaga a peça (pede confirmação com segundo clique)', asyn
   await p.waitForSelector('#apagar-ficha');
   await clicarApagar('#apagar-ficha');
   confere(!(await p.locator('.cartao:has-text("Reels da inauguração")').count()), 'peça continua no quadro');
+});
+
+// =====================================================================
+// EXECUÇÃO: GRAVAÇÕES
+// =====================================================================
+const gravacoes = () => p.locator('.gravacao .info b').allTextContents();
+
+await teste('Execução: mostra as próximas gravações com checklist e equipe', async () => {
+  await comoUsuario('u-pablo');
+  await ir('execucao');
+  igual(await gravacoes(), ['Reels da inauguração da loja', 'Fotos dos pratos para o cardápio'], 'próximas');
+  confere((await p.textContent('.gravacao:has-text("Reels da inauguração")')).includes('✓ 2/7'), 'progresso do checklist');
+  await p.click('[data-filtro=realizada]');
+  igual(await gravacoes(), ['Depoimentos de clientes'], 'realizadas');
+  await p.click('[data-filtro=proximas]');
+  await p.screenshot({ path: join(CAPTURAS, 'execucao.png') });
+});
+
+await teste('Execução: agenda gravação com equipe, equipamento e checklist pronto', async () => {
+  await ir('execucao');
+  await p.click('#nova-gravacao');
+  await p.waitForSelector('#form-gravacao');
+  igual(await p.locator('#checklist [data-item]').count(), 7, 'checklist padrão');
+  await p.fill('[name=titulo]', 'Making of do ensaio');
+  await p.fill('[name=local]', 'Estúdio LOOK');
+  await p.fill('[name=dia]', await p.evaluate(() => { const d = new Date(); d.setDate(d.getDate() + 2); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }));
+  await p.fill('[name=hora_inicio]', '15:00');
+  await p.fill('[name=hora_fim]', '16:00');
+  await p.check('[name=equipe][value=u-marina]');
+  await p.check('.equip:has-text("Câmera principal") input');
+  await p.waitForTimeout(100);
+  confere((await p.textContent('#conflitos')).includes('Reels da inauguração'), 'sem aviso de equipamento já reservado');
+  await p.fill('#novo-item', 'Levar fundo infinito');
+  await p.press('#novo-item', 'Enter');
+  await p.click('[data-tirar-item] >> nth=0');
+  igual(await p.locator('#checklist [data-item]').count(), 7, 'itens depois de pôr um e tirar outro');
+  await p.click('#salvar-gravacao'); await p.waitForTimeout(250);
+  igual(await p.locator('.modal').count(), 0, 'gravação não foi salva');
+  confere((await gravacoes()).includes('Making of do ensaio'), 'gravação não aparece');
+});
+
+await teste('Execução: término antes do começo não é salvo', async () => {
+  await p.click('.gravacao:has-text("Making of do ensaio")');
+  await p.fill('[name=hora_fim]', '10:00');
+  await p.click('#salvar-gravacao'); await p.waitForTimeout(150);
+  confere((await p.textContent('#erro-gravacao')).includes('depois do começo'), 'salvou horário errado');
+  await fecharModal();
+});
+
+await teste('Execução: gerente recebe aviso e o aviso abre a gravação', async () => {
+  await comoUsuario('u-marina');
+  await p.click('#abrir-avisos');
+  await p.click('.caixa-avisos .aviso:has-text("Gravação com você: Making of do ensaio")');
+  await p.waitForSelector('#form-gravacao');
+  igual(await p.inputValue('[name=titulo]'), 'Making of do ensaio', 'gravação aberta');
+  await fecharModal();
+});
+
+await teste('Execução: freelancer da equipe só marca o checklist', async () => {
+  await comoUsuario('u-rafa');
+  confere((await menu()).includes('Execução'), 'freelancer da equipe não vê Execução');
+  await ir('execucao');
+  igual(await p.locator('#nova-gravacao').count(), 0, 'freelancer pode agendar');
+  confere(!(await gravacoes()).includes('Making of do ensaio'), 'vê gravação em que não está');
+  await p.click('.gravacao:has-text("Reels da inauguração")');
+  await p.waitForSelector('#form-gravacao');
+  confere(await p.locator('[name=titulo]').isDisabled(), 'título editável');
+  igual(await p.locator('[data-tirar-item]').count(), 0, 'pode tirar item');
+  await p.check('#checklist [data-item="2"] [data-feito]');
+  await p.click('#salvar-gravacao'); await p.waitForTimeout(250);
+  igual(await p.locator('.modal').count(), 0, 'não salvou o checklist');
+  confere((await p.textContent('.gravacao:has-text("Reels da inauguração")')).includes('✓ 3/7'), 'checklist não atualizou');
+  await comoUsuario('u-pablo');
+});
+
+await teste('Execução: admin apaga gravação (pede confirmação)', async () => {
+  await ir('execucao');
+  await p.click('.gravacao:has-text("Making of do ensaio")');
+  await clicarApagar('#apagar-gravacao');
+  confere(!(await gravacoes()).includes('Making of do ensaio'), 'gravação continua');
 });
 
 // ---------- Resultado ----------
