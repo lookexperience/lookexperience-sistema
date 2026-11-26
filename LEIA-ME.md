@@ -87,6 +87,19 @@ A chave pública pode ficar no código. Quem protege os dados são as regras do 
 - Pessoa ou equipamento apagado sai sozinho da lista na próxima vez que a gravação for salva.
 - Todo cliente novo já nasce com o projeto **Geral** (gatilho `criar_projeto_geral`).
 
+## Banco de materiais
+- Tela **Materiais** (tabela `materiais`, permissão **Banco de materiais**): arquivo no depósito privado `materiais` (até 50 MB, links que valem 1 hora) ou link https.
+- Arquivo é aceito pela extensão (imagens, PDF, ZIP, fontes, MP3/WAV, MP4, Word/PowerPoint/Excel). AI, CDR e PSD vão dentro de um ZIP. Editar muda só nome, categoria, cliente e descrição; para trocar o arquivo, apaga e envia de novo.
+- Apaga quem tem "apagar" ou quem enviou o material (se ainda tem "criar").
+
+## Conversa do projeto
+- Tabela `mensagens`: quem enxerga o projeto lê e escreve; cada um apaga a própria mensagem e o administrador apaga qualquer uma. `@Nome` avisa quem vê os projetos.
+
+## Registro de horas
+- Tela **Horas** (tabela `horas`), aberta para todos: cada um lança, corrige e apaga as próprias horas (1 minuto a 24 horas por lançamento). Só o administrador lança para outra pessoa.
+- Ver as horas da equipe segue a permissão **Registro de horas** (ver, editar, apagar). Projeto e tarefa precisam estar visíveis para quem lança; escolher a tarefa define o projeto.
+- O cronômetro fica guardado no próprio navegador (`look-cronometro-v1`).
+
 ## Como fazer atualizações
 
 Toda mudança é feita no código, e só vai pro ar com os testes de `testes/` passando:

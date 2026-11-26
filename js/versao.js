@@ -2,6 +2,19 @@
 // entrada no topo desta lista; a tela "Sobre o sistema" mostra tudo.
 export const HISTORICO = [
   {
+    versao: '0.12.0',
+    data: '2026-11-26',
+    titulo: 'Materiais, conversa do projeto e registro de horas',
+    itens: [
+      'Nova tela "Materiais": logos, fontes, modelos de contrato e proposta, sons, fotos e vídeos da LOOK ou de cada cliente, num lugar só, com busca e filtros',
+      'Cada material é um arquivo (até 50 MB, guardado com acesso só para a equipe) ou um link (Google Drive, Canva...); AI, CDR e PSD vão dentro de um ZIP',
+      'Conversa em cada projeto: quem enxerga o projeto lê e escreve; marcar @Nome avisa a pessoa, e o aviso abre o projeto',
+      'Nova tela "Horas": cada pessoa lança o tempo gasto por projeto e tarefa (1:30, 1h30, 45min...), com total do mês, do dia e por projeto',
+      'Cronômetro que continua contando ao trocar de tela, e botão "Lançar horas" dentro de cada tarefa',
+      'Com a permissão "Registro de horas", a aba Equipe mostra as horas de todos, por pessoa e por projeto',
+    ],
+  },
+  {
     versao: '0.11.0',
     data: '2026-11-26',
     titulo: 'Execução: gravações',

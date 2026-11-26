@@ -14,6 +14,8 @@ import * as equipe from './views/equipe.js';
 import * as financas from './views/financas.js';
 import * as criacao from './views/criacao.js';
 import * as execucao from './views/execucao.js';
+import * as materiais from './views/materiais.js';
+import * as horas from './views/horas.js';
 import * as orcamentos from './views/orcamentos.js';
 import * as produtos from './views/produtos.js';
 import * as fornecedores from './views/fornecedores.js';
@@ -30,6 +32,8 @@ const ROTAS = [
   { rota: 'projetos', nome: 'Projetos', modulo: 'projetos', icone: 'projetos', view: projetos },
   { rota: 'criacao', nome: 'Criação', modulo: 'criacao', icone: 'criacao', view: criacao },
   { rota: 'execucao', nome: 'Execução', modulo: null, icone: 'execucao', view: execucao, mostrar: (s) => pode(s, 'execucao', 'ver') || execucao.temGravacao(estado) },
+  { rota: 'horas', nome: 'Horas', modulo: null, icone: 'horas', view: horas },
+  { rota: 'materiais', nome: 'Materiais', modulo: 'materiais', icone: 'materiais', view: materiais },
   { rota: 'orcamentos', nome: 'Orçamentos', modulo: 'comercial', icone: 'comercial', view: orcamentos },
   { rota: 'produtos', nome: 'Produtos', modulo: 'comercial', icone: 'produtos', view: produtos },
   { rota: 'fornecedores', nome: 'Fornecedores', modulo: 'fornecedores', icone: 'fornecedores', view: fornecedores },

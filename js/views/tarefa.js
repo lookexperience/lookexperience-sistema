@@ -1,7 +1,8 @@
 import { SETORES, STATUS, TIPOS } from '../config.js';
 import { pode, podeEditarTarefa, responsaveisDe, ehResponsavel } from '../permissoes.js';
-import { esc, $, iniciais, dataHora, paraCampoDataHora, comMencoes, avisar } from '../util.js';
+import { esc, $, iniciais, dataHora, paraCampoDataHora, comMencoes, avisar, hoje } from '../util.js';
 import { abrirModal, opcoes } from './modal.js';
+import { abrirHora } from './horas.js';
 
 // Janela de uma tarefa: ver, criar, editar, comentar.
 export async function abrirTarefa(ctx, tarefa, padrao = {}) {
@@ -45,12 +46,17 @@ export async function abrirTarefa(ctx, tarefa, padrao = {}) {
 
   const rodape = `
     ${!nova && pode(s, 'tarefas', 'apagar') ? '<button class="botao perigo" id="apagar-tarefa">Apagar</button>' : ''}
+    ${nova ? '' : '<button class="botao sutil" id="lancar-horas-tarefa" title="Lançar o tempo gasto nesta tarefa">⏱ Lançar horas</button>'}
     <span class="espaco"></span>
     <button class="botao" data-fechar-rodape>${podeEditar ? 'Cancelar' : 'Fechar'}</button>
     ${podeEditar ? `<button class="botao primario" id="salvar-tarefa">${nova ? 'Criar tarefa' : 'Salvar'}</button>` : ''}`;
 
   const { el, fechar } = abrirModal({ titulo: nova ? 'Nova tarefa' : 'Tarefa', corpo, rodape, largo: true });
   $('[data-fechar-rodape]', el).onclick = fechar;
+  $('#lancar-horas-tarefa', el)?.addEventListener('click', () => {
+    fechar();
+    abrirHora(ctx, null, { projeto_id: t.projeto_id || null, tarefa_id: t.id, data: hoje() }, () => { if (location.hash === '#/horas') return ctx.recarregar(); });
+  });
 
   const seletorCliente = $('[name=cliente_id]', el);
   const seletorProjeto = $('[name=projeto_id]', el);

@@ -73,6 +73,18 @@ export const CHECKLIST_PADRAO = [
   'Backup do material no fim do dia',
 ];
 
+// Banco de materiais: categorias (iguais às do banco).
+export const CATEGORIAS_MATERIAL = [
+  { chave: 'logos', nome: 'Logos' },
+  { chave: 'identidade', nome: 'Identidade visual' },
+  { chave: 'fontes', nome: 'Fontes' },
+  { chave: 'modelos', nome: 'Modelos (contrato, proposta)' },
+  { chave: 'fotos', nome: 'Fotos' },
+  { chave: 'videos', nome: 'Vídeos' },
+  { chave: 'sons', nome: 'Sons e trilhas' },
+  { chave: 'outros', nome: 'Outros' },
+];
+
 export const STATUS_PROJETO = [
   { chave: 'ativo', nome: 'Ativo' },
   { chave: 'pausado', nome: 'Pausado' },
@@ -89,10 +101,10 @@ export const MODULOS = [
   { chave: 'fornecedores', nome: 'Fornecedores', fase: 1 },
   { chave: 'criacao', nome: 'Criação', fase: 1 },
   { chave: 'execucao', nome: 'Execução', fase: 1 },
-  { chave: 'materiais', nome: 'Banco de materiais', fase: 3 },
+  { chave: 'materiais', nome: 'Banco de materiais', fase: 1 },
   { chave: 'equipamentos', nome: 'Equipamentos', fase: 1 },
   { chave: 'financeiro', nome: 'Financeiro da empresa', fase: 1 },
-  { chave: 'horas', nome: 'Registro de horas', fase: 4 },
+  { chave: 'horas', nome: 'Registro de horas', fase: 1 },
   { chave: 'equipe', nome: 'Equipe e acessos', fase: 1 },
 ];
 

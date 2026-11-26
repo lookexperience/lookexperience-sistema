@@ -1,6 +1,6 @@
 import { STATUS_PROJETO, STATUS, nomeDe } from '../config.js';
 import { pode } from '../permissoes.js';
-import { esc, $, dataCurta, avisar, iniciais, estaAtrasada } from '../util.js';
+import { esc, $, dataCurta, avisar, iniciais, estaAtrasada, hora } from '../util.js';
 import { abrirModal, opcoes } from './modal.js';
 import { ACEITOS, ehImagem, tamanhoLegivel, rotuloTipo } from '../anexos.js';
 import { ligarBriefings, BRIEFING_PROJETO, etiquetaBriefing } from './briefing.js';
@@ -139,11 +139,19 @@ export function abrirProjeto(ctx, projeto, clienteId = '', aoSalvar) {
         <div class="anexos-topo"><h3>Anexos</h3><span class="fraco">Imagens, PDF, Word, PowerPoint e Excel, até 20 MB</span><span class="espaco"></span>
           ${pode(s, 'projetos', 'editar') ? `<label class="botao pequeno" id="anexar">+ Anexar<input type="file" id="arquivos" multiple accept="${ACEITOS}" hidden></label>` : ''}</div>
         <div id="lista-anexos" class="lista-anexos"><span class="fraco">Carregando…</span></div>
+      </div>
+      <div class="conversa" id="conversa">
+        <div class="anexos-topo"><h3>Conversa do projeto</h3><span class="fraco">Marque alguém com @Nome</span><span class="espaco"></span>
+          <button class="botao pequeno sutil" id="atualizar-conversa" type="button">Atualizar</button></div>
+        <div class="mensagens" id="mensagens"><span class="fraco">Carregando…</span></div>
+        <form class="form-mensagem" id="form-mensagem"><textarea name="texto" maxlength="5000" rows="2" placeholder="Escreva para a equipe… (Ctrl+Enter envia)"></textarea>
+          <button class="botao primario pequeno" type="submit" id="enviar-mensagem">Enviar</button></form>
+        <div class="erro" id="erro-mensagem"></div>
       </div>`}`,
     rodape: `${!novo && pode(s, 'projetos', 'apagar') ? '<button class="botao perigo" id="apagar">Apagar</button>' : ''}<span class="espaco"></span>
       ${podeSalvar ? '<button class="botao primario" id="salvar">Salvar</button>' : ''}`,
   });
-  if (!novo) { ligarAnexos(ctx, p, el); ligarBriefings(ctx, p, $('#briefings', el)); }
+  if (!novo) { ligarAnexos(ctx, p, el); ligarBriefings(ctx, p, $('#briefings', el)); ligarConversa(ctx, p, el); }
   $('#salvar', el)?.addEventListener('click', async () => {
     const form = $('#form-projeto', el);
     if (!form.reportValidity()) return;
@@ -160,6 +168,49 @@ export function abrirProjeto(ctx, projeto, clienteId = '', aoSalvar) {
     if (e.target.dataset.confirmar !== 'sim') { e.target.dataset.confirmar = 'sim'; e.target.textContent = 'Clique de novo para apagar'; return; }
     try { await ctx.db().apagar('projetos', p.id); fechar(); avisar('Projeto apagado'); await ctx.recarregar(); aoSalvar?.(); } catch (err) { avisar(err.message); }
   });
+}
+
+// ---------- Conversa do projeto ----------
+// Quem enxerga o projeto lê e escreve. @Nome avisa a pessoa. Cada um apaga
+// a própria mensagem; o administrador apaga qualquer uma.
+async function ligarConversa(ctx, projeto, el) {
+  const s = ctx.estado.sessao;
+  const caixa = $('#mensagens', el);
+  const form = $('#form-mensagem', el);
+  const erro = $('#erro-mensagem', el);
+  // @Nome em destaque (o texto já vem escapado).
+  const comMarcas = (t) => esc(t).replace(/(^|\s)@([\p{L}]+)/gu, '$1<b class="marca">@$2</b>');
+  async function desenhar() {
+    let msgs;
+    try { msgs = await ctx.db().listar('mensagens', { projeto_id: projeto.id }); } catch (err) { caixa.innerHTML = `<span class="fraco">${esc(err.message)}</span>`; return; }
+    msgs.sort((a, b) => a.criado_em.localeCompare(b.criado_em));
+    caixa.innerHTML = msgs.map((m) => {
+      const minha = m.autor_id === s.perfil.id;
+      const nome = ctx.nomePerfil(m.autor_id) || 'Alguém';
+      return `<div class="mensagem ${minha ? 'minha' : ''}" data-mensagem="${esc(m.id)}">
+        <div class="cabeca"><span class="avatar pequeno">${esc(iniciais(nome))}</span><b>${esc(nome)}</b><span class="fraco">${esc(dataCurta(m.criado_em))}, ${esc(hora(m.criado_em))}</span>
+          ${minha || s.perfil.admin ? '<button class="botao sutil pequeno" type="button" data-apagar-mensagem title="Apagar mensagem">Apagar</button>' : ''}</div>
+        <div class="texto">${comMarcas(m.texto)}</div></div>`;
+    }).join('') || '<span class="fraco">Nenhuma mensagem ainda. Combine aqui o que for deste projeto.</span>';
+    caixa.scrollTop = caixa.scrollHeight;
+    caixa.querySelectorAll('[data-apagar-mensagem]').forEach((b) => b.addEventListener('click', async () => {
+      if (b.dataset.confirmar !== 'sim') { b.dataset.confirmar = 'sim'; b.textContent = 'Clique de novo'; return; }
+      try { await ctx.db().apagar('mensagens', b.closest('[data-mensagem]').dataset.mensagem); await desenhar(); } catch (err) { erro.textContent = err.message; }
+    }));
+  }
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    erro.textContent = '';
+    const texto = form.texto.value.trim();
+    if (!texto) { erro.textContent = 'Escreva a mensagem.'; return; }
+    const botao = $('#enviar-mensagem', el);
+    botao.disabled = true;
+    try { await ctx.db().inserir('mensagens', { projeto_id: projeto.id, texto }); form.texto.value = ''; await desenhar(); } catch (err) { erro.textContent = err.message; }
+    botao.disabled = false;
+  });
+  form.texto.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit(); } });
+  $('#atualizar-conversa', el).addEventListener('click', desenhar);
+  await desenhar();
 }
 
 // ---------- Anexos do projeto ----------

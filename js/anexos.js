@@ -91,3 +91,27 @@ export function conferirLinkPeca(link) {
   if (!/^https:\/\/[^\s<>"]+$/.test(l) || l.length > 1000) throw new Error('O link precisa começar com https:// (ex.: link do Google Drive ou do YouTube).');
   return l;
 }
+
+// Arquivo do banco de materiais: imagens, PDF, ZIP, fontes, áudio, vídeo MP4
+// e Office, até 50 MB (iguais ao depósito "materiais" do banco). Arquivos de
+// programas de design (AI, CDR, PSD) entram dentro de um ZIP.
+export const TIPOS_MATERIAL = {
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'application/pdf': 'pdf', 'application/zip': 'zip',
+  'font/ttf': 'ttf', 'font/otf': 'otf', 'font/woff': 'woff', 'font/woff2': 'woff2', 'audio/mpeg': 'mp3', 'audio/wav': 'wav', 'video/mp4': 'mp4',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'pptx',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+};
+const MATERIAL_PELA_EXTENSAO = { ...Object.fromEntries(Object.entries(TIPOS_MATERIAL).map(([t, e]) => [e, t])), jpeg: 'image/jpeg' };
+export const ACEITOS_MATERIAL = Object.keys(MATERIAL_PELA_EXTENSAO).map((e) => `.${e}`).join(',');
+
+export function conferirArquivoMaterial(arquivo) {
+  const ext0 = (arquivo.name.split('.').pop() || '').toLowerCase();
+  // Pela extensão: fontes e ZIP chegam com tipos diferentes em cada computador,
+  // e um programa (.exe) disfarçado com tipo de imagem não pode passar.
+  const tipo = MATERIAL_PELA_EXTENSAO[ext0] ?? null;
+  if (!tipo) throw new Error(`"${arquivo.name}" não foi enviado: só imagens, PDF, ZIP, fontes, MP3/WAV, MP4 e Word/PowerPoint/Excel. Arquivos do Illustrator, Corel ou Photoshop: coloque dentro de um ZIP.`);
+  if (arquivo.size > LIMITE_PECA) throw new Error(`"${arquivo.name}" passa de 50 MB. Para arquivos grandes, cadastre como link (Google Drive).`);
+  if (!arquivo.size) throw new Error(`"${arquivo.name}" está vazio.`);
+  return { tipo, ext: TIPOS_MATERIAL[tipo] };
+}

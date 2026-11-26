@@ -33,10 +33,10 @@ insert into public.modulos (chave, nome, fase, ordem) values
   ('criacao',      'Criação',              1, 60),
   ('execucao',     'Execução',             1, 70),
   ('fornecedores', 'Fornecedores',         1, 55),
-  ('materiais',    'Banco de materiais',   3, 75),
+  ('materiais',    'Banco de materiais',   1, 75),
   ('equipamentos', 'Equipamentos',         1, 76),
   ('financeiro',   'Financeiro da empresa', 1, 80),
-  ('horas',        'Registro de horas',    4, 85)
+  ('horas',        'Registro de horas',    1, 85)
 on conflict (chave) do update set nome = excluded.nome, fase = excluded.fase, ordem = excluded.ordem;
 
 -- ---------------------------------------------------------------------
@@ -513,6 +513,79 @@ select pg_temp.limite('gravacoes', 'gravacoes_checklist', $c$jsonb_typeof(checkl
 
 -- Aviso de gravação nova abre a gravação.
 alter table public.avisos add column if not exists gravacao_id uuid references public.gravacoes(id) on delete cascade;
+
+-- ---------------------------------------------------------------------
+-- Banco de materiais (desde a 0.12.0): logos, fontes, modelos de contrato
+-- e proposta, sons, fotos... da LOOK ou de um cliente. Cada material é um
+-- arquivo (depósito privado "materiais", até 50 MB) ou um link https.
+-- Permissão "materiais".
+-- ---------------------------------------------------------------------
+create table if not exists public.materiais (
+  id          uuid primary key default gen_random_uuid(),
+  titulo      text not null,
+  categoria   text not null default 'outros',
+  cliente_id  uuid references public.clientes(id) on delete set null,
+  descricao   text not null default '',
+  caminho     text unique,
+  link        text not null default '',
+  nome        text not null default '',
+  tipo        text not null default '',
+  tamanho     bigint not null default 0,
+  criado_por  uuid references public.perfis(id) on delete set null default auth.uid(),
+  criado_em   timestamptz not null default now()
+);
+select pg_temp.limite('materiais', 'materiais_tamanhos', 'char_length(btrim(titulo)) between 1 and 200 and char_length(descricao) <= 5000 and char_length(nome) <= 255');
+select pg_temp.limite('materiais', 'materiais_categoria', $c$categoria in ('logos', 'fontes', 'modelos', 'sons', 'fotos', 'videos', 'identidade', 'outros')$c$);
+select pg_temp.limite('materiais', 'materiais_origem', $c$(caminho is null) <> (link = '')
+  and (link = '' or (link ~ '^https://[^\s<>"]+$' and char_length(link) <= 1000))
+  and (caminho is null or (caminho ~ '^[0-9a-f-]{36}/[0-9a-f-]{36}\.(jpg|png|webp|gif|pdf|zip|ttf|otf|woff|woff2|mp3|wav|mp4|docx|pptx|xlsx)$'
+       and split_part(caminho, '/', 1) = id::text and tamanho between 1 and 52428800
+       and tipo in ('image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'application/zip',
+         'font/ttf', 'font/otf', 'font/woff', 'font/woff2', 'audio/mpeg', 'audio/wav', 'video/mp4',
+         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+         'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')))$c$);
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('materiais', 'materiais', false, 52428800, array['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'application/pdf', 'application/zip',
+  'font/ttf', 'font/otf', 'font/woff', 'font/woff2', 'audio/mpeg', 'audio/wav', 'video/mp4',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'])
+on conflict (id) do update set public = false, file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+-- Conversa de cada projeto (desde a 0.12.0): quem enxerga o projeto lê e
+-- escreve. Marcar @Nome avisa a pessoa (se ela vê os projetos).
+create table if not exists public.mensagens (
+  id          uuid primary key default gen_random_uuid(),
+  projeto_id  uuid not null references public.projetos(id) on delete cascade,
+  autor_id    uuid references public.perfis(id) on delete set null default auth.uid(),
+  texto       text not null,
+  criado_em   timestamptz not null default now()
+);
+create index if not exists mensagens_projeto_idx on public.mensagens (projeto_id, criado_em);
+select pg_temp.limite('mensagens', 'mensagens_tamanhos', 'char_length(btrim(texto)) between 1 and 5000');
+
+-- Registro de horas (desde a 0.12.0): cada pessoa lança o tempo que gastou,
+-- ligado (ou não) a um projeto e a uma tarefa. Cada um vê e muda as próprias
+-- horas; ver, corrigir ou apagar as dos outros segue a permissão "horas".
+create table if not exists public.horas (
+  id            uuid primary key default gen_random_uuid(),
+  usuario_id    uuid not null references public.perfis(id) on delete cascade default auth.uid(),
+  projeto_id    uuid references public.projetos(id) on delete set null,
+  tarefa_id     uuid references public.tarefas(id) on delete set null,
+  data          date not null default current_date,
+  minutos       integer not null,
+  descricao     text not null default '',
+  criado_em     timestamptz not null default now(),
+  atualizado_em timestamptz not null default now()
+);
+create index if not exists horas_usuario_idx on public.horas (usuario_id, data);
+create index if not exists horas_projeto_idx on public.horas (projeto_id);
+select pg_temp.limite('horas', 'horas_minutos', 'minutos between 1 and 1440');
+select pg_temp.limite('horas', 'horas_tamanhos', 'char_length(descricao) <= 1000');
+select pg_temp.limite('horas', 'horas_data', $c$data between date '2000-01-01' and date '2100-12-31'$c$);
 
 -- ---------------------------------------------------------------------
 -- Funções de permissão (usadas pelas políticas abaixo).
@@ -1138,6 +1211,80 @@ select c.id, 'Geral', 'Geral', 'ativo', 'dispensado', c.criado_por,
 from public.clientes c
 where not exists (select 1 from public.projetos p where p.cliente_id = c.id);
 
+-- Material: autor e data nunca mudam; arquivo e link também não (para
+-- trocar o arquivo, apaga e envia de novo).
+create or replace function public.preparar_material() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if tg_op = 'INSERT' then
+    if auth.uid() is not null then new.criado_por := auth.uid(); end if;
+    new.criado_em := now();
+  else
+    new.criado_por := old.criado_por; new.criado_em := old.criado_em;
+    new.caminho := old.caminho; new.link := old.link; new.nome := old.nome; new.tipo := old.tipo; new.tamanho := old.tamanho;
+  end if;
+  return new;
+end $$;
+drop trigger if exists preparar_material on public.materiais;
+create trigger preparar_material before insert or update on public.materiais
+  for each row execute function public.preparar_material();
+
+-- Mensagem: autor é sempre quem escreveu, na hora em que escreveu. Quem é
+-- marcado com @Nome (e vê os projetos) recebe aviso.
+create or replace function public.preparar_mensagem() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is not null then new.autor_id := auth.uid(); end if;
+  new.criado_em := now();
+  return new;
+end $$;
+drop trigger if exists preparar_mensagem on public.mensagens;
+create trigger preparar_mensagem before insert on public.mensagens
+  for each row execute function public.preparar_mensagem();
+
+create or replace function public.avisar_mensagem() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_autor text; v_projeto text;
+begin
+  select nome into v_autor from perfis where id = new.autor_id;
+  select nome into v_projeto from projetos where id = new.projeto_id;
+  insert into avisos (usuario_id, texto, projeto_id)
+  select p.id, left(coalesce(v_autor, 'Alguém') || ' marcou você na conversa do projeto: ' || v_projeto, 1000), new.projeto_id
+  from perfis p
+  where p.ativo and p.id is distinct from new.autor_id
+    and split_part(p.nome, ' ', 1) <> ''
+    and strpos(lower(new.texto), lower('@' || split_part(p.nome, ' ', 1))) > 0
+    and (p.admin or exists (select 1 from permissoes pm where pm.usuario_id = p.id and pm.modulo = 'projetos' and pm.ver));
+  return new;
+end $$;
+drop trigger if exists avisar_mensagem on public.mensagens;
+create trigger avisar_mensagem after insert on public.mensagens
+  for each row execute function public.avisar_mensagem();
+
+-- Horas: quem lança é sempre o dono (só o administrador lança para outra
+-- pessoa); o dono nunca muda depois. Tarefa escolhida define o projeto.
+create or replace function public.preparar_hora() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_projeto uuid;
+begin
+  if tg_op = 'INSERT' then
+    if auth.uid() is not null and not public.eh_admin() then new.usuario_id := auth.uid(); end if;
+    new.criado_em := now();
+  else
+    new.usuario_id := old.usuario_id; new.criado_em := old.criado_em;
+  end if;
+  new.atualizado_em := now();
+  new.descricao := btrim(coalesce(new.descricao, ''));
+  if new.tarefa_id is not null then
+    select projeto_id into v_projeto from tarefas where id = new.tarefa_id;
+    if v_projeto is not null then new.projeto_id := v_projeto; end if;
+  end if;
+  return new;
+end $$;
+drop trigger if exists preparar_hora on public.horas;
+create trigger preparar_hora before insert or update on public.horas
+  for each row execute function public.preparar_hora();
+
 drop trigger if exists preparar_gravacao on public.gravacoes;
 create trigger preparar_gravacao before insert or update on public.gravacoes
   for each row execute function public.preparar_gravacao();
@@ -1237,10 +1384,13 @@ alter table public.equipamentos enable row level security;
 alter table public.pecas       enable row level security;
 alter table public.peca_versoes enable row level security;
 alter table public.gravacoes   enable row level security;
+alter table public.materiais   enable row level security;
+alter table public.mensagens   enable row level security;
+alter table public.horas       enable row level security;
 
 do $$ declare r record; begin
   for r in select policyname, tablename from pg_policies where schemaname = 'public'
-    and tablename in ('modulos','perfis','permissoes','clientes','projetos','tarefas','comentarios','avisos','ajustes','anexos','briefings','lancamentos','orcamentos','produtos','fornecedores','equipamentos','pecas','peca_versoes','gravacoes')
+    and tablename in ('modulos','perfis','permissoes','clientes','projetos','tarefas','comentarios','avisos','ajustes','anexos','briefings','lancamentos','orcamentos','produtos','fornecedores','equipamentos','pecas','peca_versoes','gravacoes','materiais','mensagens','horas')
   loop execute format('drop policy %I on public.%I', r.policyname, r.tablename); end loop;
 end $$;
 
@@ -1444,6 +1594,44 @@ create policy gravacoes_editar on public.gravacoes for update to authenticated
 create policy gravacoes_apagar on public.gravacoes for delete to authenticated
   using (public.pode('execucao', 'apagar'));
 
+-- Banco de materiais: permissão "materiais"; cliente ligado precisa ser visível.
+create policy materiais_ler on public.materiais for select to authenticated
+  using (public.pode('materiais', 'ver'));
+create policy materiais_criar on public.materiais for insert to authenticated
+  with check (public.pode('materiais', 'criar')
+              and (cliente_id is null or exists (select 1 from public.clientes c where c.id = cliente_id)));
+create policy materiais_editar on public.materiais for update to authenticated
+  using (public.pode('materiais', 'editar'))
+  with check (public.pode('materiais', 'editar')
+              and (cliente_id is null or exists (select 1 from public.clientes c where c.id = cliente_id)));
+create policy materiais_apagar on public.materiais for delete to authenticated
+  using (public.pode('materiais', 'apagar') or (criado_por = auth.uid() and public.pode('materiais', 'criar')));
+
+-- Conversa do projeto: quem enxerga o projeto lê e escreve; cada um apaga
+-- a própria mensagem (o administrador apaga qualquer uma).
+create policy mensagens_ler on public.mensagens for select to authenticated
+  using (public.esta_ativo() and exists (select 1 from public.projetos p where p.id = projeto_id));
+create policy mensagens_criar on public.mensagens for insert to authenticated
+  with check (public.esta_ativo() and autor_id = auth.uid() and exists (select 1 from public.projetos p where p.id = projeto_id));
+create policy mensagens_apagar on public.mensagens for delete to authenticated
+  using ((autor_id = auth.uid() and public.esta_ativo()) or public.eh_admin());
+
+-- Horas: cada um as próprias; as dos outros pela permissão "horas". O projeto
+-- e a tarefa ligados precisam estar visíveis para quem grava.
+create policy horas_ler on public.horas for select to authenticated
+  using (public.esta_ativo() and (usuario_id = auth.uid() or public.pode('horas', 'ver')));
+create policy horas_criar on public.horas for insert to authenticated
+  with check (public.esta_ativo() and (usuario_id = auth.uid() or public.eh_admin())
+              and (projeto_id is null or exists (select 1 from public.projetos p where p.id = projeto_id))
+              and (tarefa_id is null or exists (select 1 from public.tarefas t where t.id = tarefa_id)));
+create policy horas_editar on public.horas for update to authenticated
+  using (public.esta_ativo() and (usuario_id = auth.uid() or public.pode('horas', 'editar')))
+  with check (public.esta_ativo() and (usuario_id = auth.uid() or public.pode('horas', 'editar'))
+              and (projeto_id is null or exists (select 1 from public.projetos p where p.id = projeto_id))
+              and (tarefa_id is null or exists (select 1 from public.tarefas t where t.id = tarefa_id)));
+create policy horas_apagar on public.horas for delete to authenticated
+  using ((usuario_id = auth.uid() and public.esta_ativo()) or public.pode('horas', 'apagar'));
+
 -- Os arquivos em si (Storage) seguem a tabela de anexos: só se lê o arquivo
 -- cujo anexo a pessoa vê; só se envia para um caminho que ela mesma acabou
 -- de registrar; só se apaga o que ela pode apagar. Ninguém substitui arquivo.
@@ -1490,6 +1678,22 @@ create policy pecas_arquivo_ler on storage.objects for select to authenticated
 create policy pecas_arquivo_enviar on storage.objects for insert to authenticated
   with check (bucket_id = 'pecas' and exists (
     select 1 from public.peca_versoes v where v.caminho = name and v.enviado_por = auth.uid()));
+-- Arquivos do banco de materiais (depósito privado "materiais"): lê quem vê
+-- o material; envia para o caminho que acabou de registrar; apaga quem pode
+-- apagar o material.
+drop policy if exists materiais_arquivo_ler on storage.objects;
+drop policy if exists materiais_arquivo_enviar on storage.objects;
+drop policy if exists materiais_arquivo_apagar on storage.objects;
+create policy materiais_arquivo_ler on storage.objects for select to authenticated
+  using (bucket_id = 'materiais' and exists (select 1 from public.materiais m where m.caminho = name));
+create policy materiais_arquivo_enviar on storage.objects for insert to authenticated
+  with check (bucket_id = 'materiais' and exists (
+    select 1 from public.materiais m where m.caminho = name and m.criado_por = auth.uid()));
+create policy materiais_arquivo_apagar on storage.objects for delete to authenticated
+  using (bucket_id = 'materiais' and exists (
+    select 1 from public.materiais m where m.caminho = name
+      and (public.pode('materiais', 'apagar') or (m.criado_por = auth.uid() and public.pode('materiais', 'criar')))));
+
 create policy pecas_arquivo_apagar on storage.objects for delete to authenticated
   using (bucket_id = 'pecas' and exists (
     select 1 from public.peca_versoes v where v.caminho = name
@@ -1528,6 +1732,10 @@ revoke execute on function public.preparar_versao() from authenticated;
 revoke execute on function public.preparar_gravacao() from authenticated;
 revoke execute on function public.avisar_gravacao() from authenticated;
 revoke execute on function public.criar_projeto_geral() from authenticated;
+revoke execute on function public.preparar_material() from authenticated;
+revoke execute on function public.preparar_mensagem() from authenticated;
+revoke execute on function public.avisar_mensagem() from authenticated;
+revoke execute on function public.preparar_hora() from authenticated;
 
 -- Avisa a API do Supabase para reler a estrutura (colunas e funções novas).
 notify pgrst, 'reload schema';

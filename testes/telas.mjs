@@ -103,10 +103,10 @@ await teste('Site envia a política de segurança (CSP) do Netlify', async () =>
 });
 
 await teste('Admin: sistema abre e mostra o menu completo', async () => {
-  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Criação', 'Execução', 'Orçamentos', 'Produtos', 'Fornecedores', 'Equipamentos', 'Finanças', 'Apresentações', 'Equipe e acessos'], 'menu');
+  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Criação', 'Execução', 'Horas', 'Materiais', 'Orçamentos', 'Produtos', 'Fornecedores', 'Equipamentos', 'Finanças', 'Apresentações', 'Equipe e acessos'], 'menu');
 });
 
-for (const rota of ['visao-geral', 'atividades', 'calendario', 'clientes', 'projetos', 'criacao', 'financas', 'apresentacoes', 'equipe', 'sobre']) {
+for (const rota of ['visao-geral', 'atividades', 'calendario', 'clientes', 'projetos', 'criacao', 'execucao', 'horas', 'materiais', 'financas', 'apresentacoes', 'equipe', 'sobre']) {
   await teste(`Admin: tela "${rota}" abre sem erro`, async () => {
     await ir(rota);
     confere(!(await p.locator('#pagina .erro').count()), 'apareceu mensagem de erro');
@@ -640,7 +640,7 @@ await teste('Admin: troca a senha de acesso (Enter salva, sem pôr a senha no en
 await comoUsuario('u-marina');
 
 await teste('Gerente: menu sem Equipe e acessos', async () => {
-  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Criação', 'Finanças', 'Apresentações'], 'menu');
+  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Clientes', 'Projetos', 'Criação', 'Horas', 'Finanças', 'Apresentações'], 'menu');
 });
 
 await teste('Gerente: recebeu o aviso da menção', async () => {
@@ -704,8 +704,8 @@ await teste('Gerente: cria projeto', async () => {
 // =====================================================================
 await comoUsuario('u-rafa');
 
-await teste('Freelancer: menu só com Visão geral, Atividades, Calendário, Execução (está numa gravação), Finanças e Apresentações', async () => {
-  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Execução', 'Finanças', 'Apresentações'], 'menu');
+await teste('Freelancer: menu só com Visão geral, Atividades, Calendário, Execução (está numa gravação), Horas, Finanças e Apresentações', async () => {
+  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Execução', 'Horas', 'Finanças', 'Apresentações'], 'menu');
 });
 
 await teste('Freelancer: vê só as tarefas dele', async () => {
@@ -766,7 +766,7 @@ await teste('Freelancer: clicar num dia vazio do calendário não abre nada', as
 // =====================================================================
 await teste('Conta liberada pelo admin entra no sistema', async () => {
   await comoUsuario('u-novo');
-  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Finanças', 'Apresentações'], 'menu');
+  igual(await menu(), ['Visão geral', 'Atividades', 'Calendário', 'Horas', 'Finanças', 'Apresentações'], 'menu');
 });
 
 await teste('Conta desativada vê "Conta desativada"', async () => {
@@ -1183,7 +1183,7 @@ await teste('Equipamentos e fornecedores: gerente sem permissão não vê; com "
 await teste('Celular: telas cabem na largura (sem rolagem para o lado)', async () => {
   await comoUsuario('u-pablo');
   await p.setViewportSize({ width: 390, height: 844 });
-  for (const rota of ['visao-geral', 'clientes', 'projetos', 'criacao', 'execucao', 'financas', 'orcamentos', 'produtos', 'fornecedores', 'equipamentos']) {
+  for (const rota of ['visao-geral', 'clientes', 'projetos', 'criacao', 'execucao', 'horas', 'materiais', 'financas', 'orcamentos', 'produtos', 'fornecedores', 'equipamentos']) {
     await ir(rota);
     const sobra = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     confere(sobra <= 1, `${rota} passa ${sobra}px da tela`);
@@ -1512,6 +1512,347 @@ await teste('Execução: admin apaga gravação (pede confirmação)', async () 
   await p.click('.gravacao:has-text("Making of do ensaio")');
   await clicarApagar('#apagar-gravacao');
   confere(!(await gravacoes()).includes('Making of do ensaio'), 'gravação continua');
+});
+
+// =====================================================================
+// BANCO DE MATERIAIS
+// =====================================================================
+const materiais = () => p.locator('.material .nome-material').allTextContents();
+
+await teste('Materiais: lista os materiais da LOOK e dos clientes, com filtros', async () => {
+  await comoUsuario('u-pablo');
+  await p.click('#resetar-demo'); await p.waitForTimeout(300);
+  await ir('materiais');
+  igual(await materiais(), ['Logo LOOK (todas as versões)', 'Modelo de contrato de prestação de serviço', 'Paleta e fontes Flambé'], 'todos');
+  await p.click('[data-categoria=logos]');
+  igual(await materiais(), ['Logo LOOK (todas as versões)'], 'só logos');
+  confere(await p.locator('.material .capa img').count() === 1, 'logo sem miniatura');
+  await p.click('[data-categoria=""]');
+  await p.selectOption('#filtro-cliente-material', { label: 'Flambé' });
+  igual(await materiais(), ['Paleta e fontes Flambé'], 'só Flambé');
+  await p.selectOption('#filtro-cliente-material', 'look');
+  igual((await materiais()).length, 2, 'só LOOK');
+  await p.selectOption('#filtro-cliente-material', '');
+  await p.fill('#busca-material', 'contrato'); await p.waitForTimeout(400);
+  igual(await materiais(), ['Modelo de contrato de prestação de serviço'], 'busca');
+  await p.fill('#busca-material', ''); await p.waitForTimeout(400);
+  await p.screenshot({ path: join(CAPTURAS, 'materiais.png') });
+});
+
+await teste('Materiais: envia arquivo de fonte e cadastra link do Canva', async () => {
+  await ir('materiais');
+  await p.click('#novo-material');
+  await p.fill('#form-material [name=titulo]', 'Fonte Anton');
+  await p.selectOption('#form-material [name=categoria]', 'fontes');
+  await p.setInputFiles('#form-material [name=arquivo]', [{ name: 'Anton-Regular.ttf', mimeType: 'font/ttf', buffer: Buffer.from('fonte de teste') }]);
+  await p.click('#salvar-material'); await p.waitForTimeout(300);
+  igual(await p.locator('.modal').count(), 0, 'fonte não foi salva');
+  confere((await p.textContent('.material:has-text("Fonte Anton")')).includes('TTF'), 'sem o tipo TTF no cartão');
+  confere(await p.locator('.material:has-text("Fonte Anton") a[download]').count() === 1, 'sem botão Baixar');
+  await p.click('#novo-material');
+  await p.fill('#form-material [name=titulo]', 'Modelos de stories no Canva');
+  await p.selectOption('#form-material [name=cliente_id]', { label: 'Lotus Games' });
+  await p.fill('#form-material [name=link]', 'https://www.canva.com/design/abc');
+  await p.click('#salvar-material'); await p.waitForTimeout(300);
+  confere((await p.textContent('.material:has-text("Modelos de stories")')).includes('Lotus Games'), 'material sem o cliente');
+  igual(await p.getAttribute('.material:has-text("Modelos de stories") a.capa', 'href'), 'https://www.canva.com/design/abc', 'link');
+});
+
+await teste('Materiais: sem arquivo nem link, com os dois, ou link que não é https, não salva', async () => {
+  await ir('materiais');
+  await p.click('#novo-material');
+  await p.fill('#form-material [name=titulo]', 'Vazio');
+  await p.click('#salvar-material'); await p.waitForTimeout(150);
+  confere((await p.textContent('#erro-material')).includes('arquivo ou cole um link'), 'aceitou sem nada');
+  await p.fill('#form-material [name=link]', 'https://x.com');
+  await p.setInputFiles('#form-material [name=arquivo]', [{ name: 'a.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF') }]);
+  await p.click('#salvar-material'); await p.waitForTimeout(150);
+  confere((await p.textContent('#erro-material')).includes('não os dois'), 'aceitou os dois');
+  await p.setInputFiles('#form-material [name=arquivo]', []);
+  await p.fill('#form-material [name=link]', 'javascript:alert(1)');
+  await p.click('#salvar-material'); await p.waitForTimeout(150);
+  confere((await p.textContent('#erro-material')).length > 0, 'aceitou link javascript:');
+  await fecharModal();
+  confere(!(await materiais()).includes('Vazio'), 'material inválido foi salvo');
+});
+
+await teste('Ataque: arquivo de página HTML ou programa não vira material', async () => {
+  await ir('materiais');
+  await p.click('#novo-material');
+  await p.fill('#form-material [name=titulo]', 'Pegadinha');
+  await p.setInputFiles('#form-material [name=arquivo]', [{ name: 'logo.html', mimeType: 'text/html', buffer: Buffer.from('<script>alert(1)</script>') }]);
+  await p.click('#salvar-material'); await p.waitForTimeout(150);
+  confere((await p.textContent('#erro-material')).length > 0, 'aceitou HTML');
+  await p.setInputFiles('#form-material [name=arquivo]', [{ name: 'logo.png.exe', mimeType: 'image/png', buffer: Buffer.from('MZ') }]);
+  await p.click('#salvar-material'); await p.waitForTimeout(150);
+  confere((await p.textContent('#erro-material')).length > 0, 'aceitou .exe disfarçado');
+  await p.setInputFiles('#form-material [name=arquivo]', [{ name: 'logo.ai', mimeType: 'application/postscript', buffer: Buffer.from('x') }]);
+  await p.click('#salvar-material'); await p.waitForTimeout(150);
+  confere((await p.textContent('#erro-material')).includes('ZIP'), 'AI sem explicar que vai dentro de um ZIP');
+  await fecharModal();
+  confere(!(await materiais()).includes('Pegadinha'), 'arquivo perigoso foi salvo');
+});
+
+await teste('Materiais: editar muda nome e categoria; apagar pede segundo clique', async () => {
+  await ir('materiais');
+  await p.click('.material:has-text("Fonte Anton") [data-editar]');
+  await p.waitForSelector('#form-material');
+  igual(await p.locator('#form-material [name=arquivo]').count(), 0, 'edição deixa trocar o arquivo');
+  await p.fill('#form-material [name=titulo]', 'Fonte Anton (títulos)');
+  await p.click('#salvar-material'); await p.waitForTimeout(250);
+  confere((await materiais()).includes('Fonte Anton (títulos)'), 'nome não mudou');
+  await p.click('.material:has-text("Fonte Anton") [data-apagar-material]'); await p.waitForTimeout(100);
+  confere((await materiais()).includes('Fonte Anton (títulos)'), 'apagou com um clique só');
+  await p.click('.material:has-text("Fonte Anton") [data-apagar-material]'); await p.waitForTimeout(250);
+  confere(!(await materiais()).includes('Fonte Anton (títulos)'), 'não apagou');
+});
+
+await teste('Materiais: sem permissão não aparece; com "ver" só abre e baixa', async () => {
+  await comoUsuario('u-marina');
+  confere(!(await menu()).includes('Materiais'), 'gerente sem permissão vê Materiais');
+  await p.goto(`${BASE}#/materiais`); await p.waitForTimeout(200);
+  igual(await p.locator('.material').count(), 0, 'abriu Materiais pelo endereço');
+  await comoUsuario('u-pablo');
+  await ir('equipe');
+  await p.click('tr[data-id=u-marina]');
+  await p.check('[data-modulo=materiais] [data-acao=ver]');
+  await p.click('#salvar'); await p.waitForTimeout(250);
+  await comoUsuario('u-marina');
+  await ir('materiais');
+  igual((await materiais()).length, 4, 'gerente não vê os materiais');
+  igual(await p.locator('#novo-material, [data-editar], [data-apagar-material]').count(), 0, 'gerente só com "ver" pode mudar');
+  await comoUsuario('u-pablo');
+});
+
+// =====================================================================
+// CONVERSA DO PROJETO
+// =====================================================================
+const mensagensDoProjeto = () => p.locator('#mensagens .mensagem .texto').allTextContents();
+
+await teste('Conversa: projeto mostra a conversa e o admin escreve marcando a gerente', async () => {
+  await comoUsuario('u-pablo');
+  await abrirProjetoLotus();
+  await p.waitForSelector('#mensagens .mensagem');
+  igual(await mensagensDoProjeto(), ['O cliente pediu para adiantar o post de lançamento para sexta.'], 'mensagem de exemplo');
+  await p.fill('#form-mensagem [name=texto]', 'Combinado. @Marina consegue até quinta?');
+  await p.click('#enviar-mensagem'); await p.waitForTimeout(250);
+  igual((await mensagensDoProjeto()).length, 2, 'mensagem não entrou');
+  igual(await p.textContent('#mensagens .mensagem.minha .marca'), '@Marina', 'marcação sem destaque');
+  igual(await p.inputValue('#form-mensagem [name=texto]'), '', 'campo não limpou');
+  await p.screenshot({ path: join(CAPTURAS, 'conversa-projeto.png') });
+  await fecharModal();
+});
+
+await teste('Conversa: Ctrl+Enter envia e mensagem vazia não vai', async () => {
+  await abrirProjetoLotus();
+  await p.waitForSelector('#mensagens .mensagem');
+  await p.click('#enviar-mensagem'); await p.waitForTimeout(150);
+  confere((await p.textContent('#erro-mensagem')).includes('Escreva'), 'aceitou vazia');
+  await p.fill('#form-mensagem [name=texto]', '   ');
+  await p.click('#enviar-mensagem'); await p.waitForTimeout(150);
+  igual((await mensagensDoProjeto()).length, 2, 'entrou mensagem só com espaços');
+  await p.fill('#form-mensagem [name=texto]', 'Arte final sobe amanhã.');
+  await p.press('#form-mensagem [name=texto]', 'Control+Enter'); await p.waitForTimeout(250);
+  confere((await mensagensDoProjeto()).includes('Arte final sobe amanhã.'), 'Ctrl+Enter não enviou');
+  await fecharModal();
+});
+
+await teste('Conversa: gerente marcada recebe aviso, e o aviso abre o projeto', async () => {
+  await comoUsuario('u-marina');
+  await p.click('#abrir-avisos');
+  await p.click('.caixa-avisos .aviso:has-text("marcou você na conversa do projeto")');
+  await p.waitForSelector('#mensagens .mensagem');
+  confere((await mensagensDoProjeto()).includes('Combinado. @Marina consegue até quinta?'), 'aviso não abriu a conversa');
+  igual(await p.locator('#mensagens [data-apagar-mensagem]').count(), 1, 'gerente pode apagar mensagens dos outros');
+  await p.fill('#form-mensagem [name=texto]', 'Consigo sim!');
+  await p.click('#enviar-mensagem'); await p.waitForTimeout(250);
+  await clicarApagar('#mensagens .mensagem.minha:has-text("Consigo sim!") [data-apagar-mensagem]');
+  confere(!(await mensagensDoProjeto()).includes('Consigo sim!'), 'não apagou a própria mensagem');
+  await fecharModal();
+});
+
+await teste('Conversa: freelancer escreve no projeto dele; código no texto não roda', async () => {
+  await comoUsuario('u-rafa');
+  // O freelancer não tem a tela de Projetos: a conversa fica no projeto, e ele escreve pela API (o banco permite).
+  const r = await p.evaluate(async () => {
+    const db = await import('./js/backend-demo.js');
+    await db.inserir('mensagens', { projeto_id: 'p-lotus', texto: '<img src=x onerror="window.__xss.push(1)"> vou editar hoje' });
+    try { await db.inserir('mensagens', { projeto_id: 'p-flambe', texto: 'oi' }); return 'escreveu em projeto alheio'; } catch { return 'ok'; }
+  });
+  igual(r, 'ok', 'freelancer');
+  await comoUsuario('u-pablo');
+  await p.evaluate(() => { window.__xss = []; });
+  await abrirProjetoLotus();
+  await p.waitForSelector('#mensagens .mensagem');
+  confere((await mensagensDoProjeto()).some((t) => t.includes('vou editar hoje')), 'mensagem do freelancer não aparece');
+  igual(await p.evaluate(() => window.__xss?.length ?? 0), 0, 'código rodou');
+  igual(await p.locator('#mensagens img').count(), 0, 'virou imagem');
+  errosDaPagina = errosDaPagina.filter((e) => !/Failed to load resource/.test(e));
+  await fecharModal();
+});
+
+await teste('Conversa: admin apaga mensagem de outra pessoa', async () => {
+  await abrirProjetoLotus();
+  await p.waitForSelector('#mensagens .mensagem');
+  const antes = (await mensagensDoProjeto()).length;
+  await clicarApagar('#mensagens .mensagem:not(.minha) [data-apagar-mensagem] >> nth=0');
+  igual((await mensagensDoProjeto()).length, antes - 1, 'não apagou');
+  await fecharModal();
+});
+
+// =====================================================================
+// REGISTRO DE HORAS
+// =====================================================================
+const horasNaLista = () => p.locator('.lista-horas tbody tr td:nth-last-child(2) b').allTextContents();
+
+await teste('Horas: admin vê as próprias horas do mês com total e por projeto', async () => {
+  await comoUsuario('u-pablo');
+  await ir('horas');
+  igual((await horasNaLista()).sort(), ['Direção de arte', 'Reunião de valores com a Lotus'], 'minhas horas');
+  igual(await p.textContent('#total-mes'), '2h30', 'total do mês');
+  confere((await p.textContent('#por-projeto')).includes('Flambé · Identidade visual'), 'sem o projeto no resumo');
+  await p.screenshot({ path: join(CAPTURAS, 'horas.png') });
+});
+
+await teste('Horas: lança 1:30 numa tarefa e o projeto vem junto', async () => {
+  await ir('horas');
+  await p.click('#nova-hora');
+  await p.waitForSelector('#form-hora');
+  await p.fill('#form-hora [name=duracao]', '1:30');
+  confere((await p.textContent('#previa-duracao')).includes('1h30'), 'prévia da duração');
+  await p.selectOption('#form-hora [name=tarefa_id]', { label: 'Landing page da Fusion Soldas' });
+  igual(await p.inputValue('#form-hora [name=projeto_id]'), 'p-fusion', 'projeto da tarefa');
+  await p.fill('#form-hora [name=descricao]', 'Wireframe da landing');
+  await p.click('#salvar-hora'); await p.waitForTimeout(250);
+  igual(await p.locator('.modal').count(), 0, 'não salvou');
+  igual(await p.textContent('#total-mes'), '4h', 'total depois de lançar');
+  confere((await p.textContent('#por-projeto')).includes('Fusion Soldas · Landing page'), 'projeto no resumo');
+});
+
+await teste('Horas: duração inválida não salva (0, mais de 24 h, texto)', async () => {
+  await ir('horas');
+  await p.click('#nova-hora');
+  for (const ruim of ['0', '25:00', 'abc', '1:75']) {
+    await p.fill('#form-hora [name=duracao]', ruim);
+    await p.click('#salvar-hora'); await p.waitForTimeout(100);
+    confere((await p.textContent('#erro-hora')).includes('duração'), `aceitou "${ruim}"`);
+  }
+  await p.fill('#form-hora [name=duracao]', '45min');
+  confere((await p.textContent('#previa-duracao')).includes('45min'), '45min');
+  await p.fill('#form-hora [name=duracao]', '2');
+  confere((await p.textContent('#previa-duracao')).includes('2h'), '2 = 2 horas');
+  await p.fill('#form-hora [name=duracao]', '1,5');
+  confere((await p.textContent('#previa-duracao')).includes('1h30'), '1,5 = 1h30');
+  await fecharModal();
+  igual(await p.textContent('#total-mes'), '4h', 'algo inválido entrou');
+});
+
+await teste('Horas: corrigir e apagar (com segundo clique)', async () => {
+  await ir('horas');
+  await p.click('.lista-horas tr:has-text("Wireframe da landing")');
+  await p.fill('#form-hora [name=duracao]', '2h');
+  await p.click('#salvar-hora'); await p.waitForTimeout(250);
+  igual(await p.textContent('#total-mes'), '4h30', 'correção');
+  await p.click('.lista-horas tr:has-text("Wireframe da landing")');
+  await p.click('#apagar-hora'); await p.waitForTimeout(100);
+  igual(await p.locator('.modal').count(), 1, 'apagou com um clique');
+  await p.click('#apagar-hora'); await p.waitForTimeout(250);
+  igual(await p.textContent('#total-mes'), '2h30', 'não apagou');
+});
+
+await teste('Horas: cronômetro conta mesmo trocando de tela e vira lançamento', async () => {
+  await ir('horas');
+  await p.click('#cronometro'); await p.waitForTimeout(150);
+  confere(await p.locator('#tempo-cronometro').count(), 'cronômetro não ligou');
+  // Finge que começou há 50 minutos.
+  await p.evaluate(() => localStorage.setItem('look-cronometro-v1', JSON.stringify({ inicio: Date.now() - 50 * 60000 })));
+  await ir('atividades'); await ir('horas');
+  confere((await p.textContent('#tempo-cronometro')).startsWith('00:50'), 'tempo não continuou');
+  await p.click('#cronometro');
+  await p.waitForSelector('#form-hora');
+  igual(await p.inputValue('#form-hora [name=duracao]'), '50min', 'duração do cronômetro');
+  await p.fill('#form-hora [name=descricao]', 'Ajustes no roteiro');
+  await p.click('#salvar-hora'); await p.waitForTimeout(250);
+  igual(await p.locator('#tempo-cronometro').count(), 0, 'cronômetro não parou');
+  igual(await p.textContent('#total-mes'), '3h20', 'tempo do cronômetro não entrou');
+});
+
+await teste('Horas: atalho na tarefa já vem com a tarefa escolhida', async () => {
+  await ir('atividades');
+  await p.click('.cartao:has-text("Contrato Lotus pelo gov.br")');
+  await p.click('#lancar-horas-tarefa');
+  await p.waitForSelector('#form-hora');
+  igual(await p.inputValue('#form-hora [name=projeto_id]'), 'p-lotus', 'projeto');
+  igual(await p.locator('#form-hora [name=tarefa_id] option:checked').textContent(), 'Contrato Lotus pelo gov.br', 'tarefa');
+  await p.fill('#form-hora [name=duracao]', '30min');
+  await p.click('#salvar-hora'); await p.waitForTimeout(250);
+  await ir('horas');
+  igual(await p.textContent('#total-mes'), '3h50', 'hora da tarefa');
+});
+
+await teste('Horas: admin vê a equipe, filtra por pessoa e lança para outra pessoa', async () => {
+  await ir('horas');
+  await p.click('[data-aba=equipe]');
+  confere((await p.textContent('#por-pessoa')).includes('Rafa Exemplo'), 'sem o freelancer');
+  await p.selectOption('#filtro-pessoa', 'u-marina');
+  igual(await horasNaLista(), ['Duas opções de dourado para a medalha'], 'filtro por pessoa');
+  await p.selectOption('#filtro-pessoa', '');
+  await p.click('#nova-hora');
+  await p.selectOption('#form-hora [name=usuario_id]', 'u-rafa');
+  await p.fill('#form-hora [name=duracao]', '3h');
+  await p.fill('#form-hora [name=descricao]', 'Diária de gravação');
+  await p.click('#salvar-hora'); await p.waitForTimeout(250);
+  confere((await p.textContent('.lista-horas tr:has-text("Diária de gravação")')).includes('Rafa Exemplo'), 'não ficou no nome do Rafa');
+  await p.click('[data-aba=minhas]');
+});
+
+await teste('Horas: freelancer só vê e muda as próprias horas', async () => {
+  await comoUsuario('u-rafa');
+  confere((await menu()).includes('Horas'), 'freelancer sem Horas no menu');
+  await ir('horas');
+  igual(await p.locator('[data-aba=equipe]').count(), 0, 'freelancer vê a aba Equipe');
+  igual((await horasNaLista()).sort(), ['Diária de gravação', 'Edição do primeiro reels'], 'horas do freelancer');
+  await p.click('#nova-hora');
+  igual(await p.locator('#form-hora [name=usuario_id]').count(), 0, 'freelancer escolhe de quem é a hora');
+  const projetosVistos = await p.locator('#form-hora [name=projeto_id] option').allTextContents();
+  confere(!projetosVistos.some((t) => t.includes('Flambé')), 'freelancer vê projeto que não é dele');
+  await fecharModal();
+  const r = await p.evaluate(async () => {
+    const db = await import('./js/backend-demo.js');
+    const minhas = await db.listar('horas');
+    if (minhas.some((h) => h.usuario_id !== 'u-rafa')) return 'viu hora dos outros';
+    try { await db.inserir('horas', { minutos: 60, projeto_id: 'p-flambe', data: '2026-11-01' }); return 'lançou em projeto alheio'; } catch { /* certo */ }
+    const h = await db.inserir('horas', { minutos: 60, usuario_id: 'u-pablo' });
+    return h.usuario_id === 'u-rafa' ? 'ok' : 'lançou no nome de outro';
+  });
+  igual(r, 'ok', 'freelancer pela API');
+  await comoUsuario('u-pablo');
+});
+
+await teste('Horas: gerente com "ver" vê a equipe mas não corrige a hora dos outros', async () => {
+  await ir('equipe');
+  await p.click('tr[data-id=u-marina]');
+  await p.check('[data-modulo=horas] [data-acao=ver]');
+  await p.click('#salvar'); await p.waitForTimeout(250);
+  await comoUsuario('u-marina');
+  await ir('horas');
+  await p.click('[data-aba=equipe]');
+  await p.click('.lista-horas tr:has-text("Reunião de valores com a Lotus")');
+  await p.waitForSelector('#form-hora');
+  igual(await p.locator('#salvar-hora, #apagar-hora').count(), 0, 'gerente pode mudar hora do admin');
+  confere(await p.locator('#form-hora [name=duracao]').isDisabled(), 'duração editável');
+  await fecharModal();
+  await p.click('[data-aba=minhas]');
+  await comoUsuario('u-pablo');
+});
+
+await teste('Horas: setas trocam o mês e mês sem horas mostra aviso', async () => {
+  await ir('horas');
+  await p.click('#mes-antes'); await p.waitForTimeout(150);
+  confere(await p.locator('#mes-hoje').count(), 'sem botão de voltar');
+  igual(await p.textContent('#total-mes'), '0min', 'mês passado com horas');
+  confere(await p.locator('.vazio', { hasText: 'Nenhuma hora lançada' }).count(), 'sem aviso de vazio');
+  await p.click('#mes-hoje'); await p.waitForTimeout(150);
 });
 
 // ---------- Resultado ----------

@@ -786,6 +786,104 @@ reset role;
 set role authenticated;
 select teste.como('00000000-0000-0000-0000-0000000000aa');
 
+-- ---------------------------------------------------------------------
+-- Banco de materiais e conversa dos projetos
+-- ---------------------------------------------------------------------
+select teste.ok(teste.linhas($$insert into materiais (id, titulo, categoria, caminho, nome, tipo, tamanho, criado_por) values ('a0000000-0000-0000-0000-000000000001', 'Logos LOOK', 'logos', 'a0000000-0000-0000-0000-000000000001/a1000000-0000-0000-0000-000000000001.zip', 'logos.zip', 'application/zip', 5000, '00000000-0000-0000-0000-0000000000bb')$$) = 1, 'Admin cadastra material com arquivo');
+select teste.ok((select criado_por = '00000000-0000-0000-0000-0000000000aa' from materiais where id = 'a0000000-0000-0000-0000-000000000001'), 'Autor do material é quem cadastrou');
+select teste.ok(teste.linhas($$insert into storage.objects (bucket_id, name) values ('materiais', 'a0000000-0000-0000-0000-000000000001/a1000000-0000-0000-0000-000000000001.zip')$$) = 1, 'Admin sobe o arquivo do material');
+select teste.ok(teste.linhas($$insert into materiais (titulo, categoria, link) values ('Contrato padrão', 'modelos', 'https://docs.google.com/document/d/x')$$) = 1, 'Admin cadastra material com link');
+select teste.ok(teste.linhas($$insert into materiais (titulo, link) values ('x', 'javascript:alert(1)')$$) = -1, 'Ataque: link que não é https é recusado');
+select teste.ok(teste.linhas($$insert into materiais (id, titulo, caminho, tipo, tamanho) values ('a0000000-0000-0000-0000-000000000002', 'x', 'a0000000-0000-0000-0000-000000000002/a1000000-0000-0000-0000-000000000002.html', 'text/html', 10)$$) = -1, 'Ataque: arquivo HTML é recusado');
+select teste.ok(teste.linhas($$insert into materiais (titulo, categoria, link) values ('x', 'segredos', 'https://x.com')$$) = -1, 'Categoria inventada é recusada');
+select teste.ok(teste.linhas($$update materiais set link = 'https://outro.com', titulo = 'Logos oficiais' where id = 'a0000000-0000-0000-0000-000000000001'$$) = 1, 'Admin renomeia material (comando)');
+select teste.ok((select titulo = 'Logos oficiais' and link = '' and caminho = 'a0000000-0000-0000-0000-000000000001/a1000000-0000-0000-0000-000000000001.zip' from materiais where id = 'a0000000-0000-0000-0000-000000000001'), 'Título muda, mas o arquivo do material não');
+
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok((select count(*) = 0 from materiais), 'Sem permissão, não vê o banco de materiais');
+select teste.ok((select count(*) = 0 from storage.objects where bucket_id = 'materiais'), 'Sem permissão, não lista os arquivos dos materiais');
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+insert into permissoes values ('00000000-0000-0000-0000-0000000000bb', 'materiais', true, true, false, false, 'proprias');
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok((select count(*) = 2 from materiais), 'Com "materiais", vê o banco');
+select teste.ok(teste.linhas($$insert into materiais (id, titulo, categoria, link) values ('a0000000-0000-0000-0000-000000000002', 'Trilha do reels', 'sons', 'https://drive.google.com/x')$$) = 1, 'Gerente com "criar" cadastra material');
+select teste.ok(teste.linhas($$update materiais set titulo = 'x'$$) = 0, 'Sem "editar", não muda material');
+select teste.ok(teste.linhas($$delete from materiais where id = 'a0000000-0000-0000-0000-000000000001'$$) = 0, 'Sem "apagar", não apaga material de outra pessoa');
+select teste.ok(teste.linhas($$delete from materiais where id = 'a0000000-0000-0000-0000-000000000002'$$) = 1, 'Apaga o próprio material');
+
+-- Conversa do projeto
+select teste.ok(teste.linhas($$insert into mensagens (projeto_id, texto, autor_id) values ('20000000-0000-0000-0000-000000000001', 'Cliente pediu para adiantar. @Pablo e @Rafa podem ver?', '00000000-0000-0000-0000-0000000000aa')$$) = 1, 'Gerente escreve na conversa do projeto');
+select teste.ok((select autor_id = '00000000-0000-0000-0000-0000000000bb' from mensagens where projeto_id = '20000000-0000-0000-0000-000000000001'), 'Autor da mensagem é quem escreveu (não dá para fingir outro)');
+select teste.ok(teste.linhas($$insert into mensagens (projeto_id, texto) values ('20000000-0000-0000-0000-000000000001', '   ')$$) = -1, 'Mensagem vazia é recusada');
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.ok((select count(*) = 1 from avisos where usuario_id = '00000000-0000-0000-0000-0000000000aa' and texto = 'Marina Gerente marcou você na conversa do projeto: Rebranding'), 'Admin marcado com @ recebe aviso');
+select teste.como('00000000-0000-0000-0000-0000000000cc');
+select teste.ok((select count(*) = 0 from avisos where texto like '%conversa do projeto%'), 'Freelancer sem permissão de projetos não recebe aviso da conversa');
+select teste.ok((select count(*) = 1 from mensagens where projeto_id = '20000000-0000-0000-0000-000000000001'), 'Freelancer lê a conversa do projeto em que tem tarefa');
+select teste.ok(teste.linhas($$insert into mensagens (projeto_id, texto) values ('20000000-0000-0000-0000-000000000001', 'Vou editar hoje')$$) = 1, 'Freelancer responde na conversa do projeto dele');
+select teste.ok((select count(*) = 0 from mensagens where projeto_id = '20000000-0000-0000-0000-000000000002'), 'Freelancer não lê a conversa de projeto que não enxerga');
+select teste.ok(teste.linhas($$insert into mensagens (projeto_id, texto) values ('20000000-0000-0000-0000-000000000002', 'oi')$$) = -1, 'Freelancer não escreve em projeto que não enxerga');
+select teste.ok(teste.linhas($$delete from mensagens where autor_id = '00000000-0000-0000-0000-0000000000bb'$$) = 0, 'Ninguém apaga a mensagem dos outros');
+select teste.ok(teste.linhas($$delete from mensagens where autor_id = '00000000-0000-0000-0000-0000000000cc'$$) = 1, 'Cada um apaga a própria mensagem');
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.ok(teste.linhas($$delete from mensagens where projeto_id = '20000000-0000-0000-0000-000000000001'$$) = 1, 'Admin apaga qualquer mensagem');
+delete from permissoes where usuario_id = '00000000-0000-0000-0000-0000000000bb' and modulo = 'materiais';
+select teste.ok(teste.linhas($$delete from storage.objects where bucket_id = 'materiais' and name = 'a0000000-0000-0000-0000-000000000001/a1000000-0000-0000-0000-000000000001.zip'$$) = 1, 'Admin apaga o arquivo do material');
+reset role;
+set role anon;
+select teste.como(null);
+select teste.ok(teste.linhas($$select * from materiais$$) = -1 and teste.linhas($$select * from mensagens$$) = -1, 'Ataque: visitante sem login não lê materiais nem conversas');
+reset role;
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+
+-- ---------------------------------------------------------------------
+-- Registro de horas
+-- ---------------------------------------------------------------------
+select teste.como('00000000-0000-0000-0000-0000000000cc');
+select teste.ok(teste.linhas($$insert into horas (id, tarefa_id, minutos, descricao, usuario_id) values ('40000000-0000-0000-0000-000000000001', '30000000-0000-0000-0000-000000000003', 90, '  Edição do reels  ', '00000000-0000-0000-0000-0000000000aa')$$) = 1, 'Freelancer lança horas na própria tarefa');
+select teste.ok((select usuario_id = '00000000-0000-0000-0000-0000000000cc' and projeto_id = '20000000-0000-0000-0000-000000000001' and descricao = 'Edição do reels' from horas where id = '40000000-0000-0000-0000-000000000001'), 'Hora fica no nome de quem lançou e pega o projeto da tarefa');
+select teste.ok(teste.linhas($$insert into horas (projeto_id, minutos) values ('20000000-0000-0000-0000-000000000002', 30)$$) = -1, 'Freelancer não lança hora em projeto que não enxerga');
+select teste.ok(teste.linhas($$insert into horas (tarefa_id, minutos) values ('30000000-0000-0000-0000-000000000001', 30)$$) = -1, 'Freelancer não lança hora em tarefa que não enxerga');
+select teste.ok(teste.linhas($$insert into horas (minutos) values (0)$$) = -1, 'Zero minutos é recusado');
+select teste.ok(teste.linhas($$insert into horas (minutos) values (1441)$$) = -1, 'Mais de 24 horas num lançamento é recusado');
+select teste.ok(teste.linhas($$insert into horas (minutos, data) values (60, '1999-12-31')$$) = -1, 'Data absurda é recusada');
+select teste.ok(teste.linhas($$insert into horas (minutos, descricao) values (60, repeat('x', 1001))$$) = -1, 'Descrição longa demais é recusada');
+select teste.ok(teste.linhas($$update horas set minutos = 120, usuario_id = '00000000-0000-0000-0000-0000000000bb' where id = '40000000-0000-0000-0000-000000000001'$$) = 1, 'Freelancer corrige a própria hora');
+select teste.ok((select minutos = 120 and usuario_id = '00000000-0000-0000-0000-0000000000cc' from horas where id = '40000000-0000-0000-0000-000000000001'), 'Corrigir não passa a hora para outra pessoa');
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok(teste.linhas($$insert into horas (id, projeto_id, minutos, descricao) values ('40000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000002', 45, 'Reunião')$$) = 1, 'Gerente lança hora em projeto');
+select teste.ok((select count(*) = 1 from horas), 'Sem a permissão "horas", gerente só vê as próprias horas');
+select teste.ok(teste.linhas($$update horas set minutos = 1 where id = '40000000-0000-0000-0000-000000000001'$$) = 0, 'Sem permissão, não corrige a hora dos outros');
+select teste.ok(teste.linhas($$delete from horas where id = '40000000-0000-0000-0000-000000000001'$$) = 0, 'Sem permissão, não apaga a hora dos outros');
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+insert into permissoes values ('00000000-0000-0000-0000-0000000000bb', 'horas', true, false, false, false, 'proprias');
+select teste.ok(teste.linhas($$insert into horas (id, usuario_id, projeto_id, minutos) values ('40000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-0000000000cc', '20000000-0000-0000-0000-000000000001', 60)$$) = 1, 'Admin lança hora para outra pessoa');
+select teste.ok((select usuario_id = '00000000-0000-0000-0000-0000000000cc' from horas where id = '40000000-0000-0000-0000-000000000003'), 'Hora lançada pelo admin fica com a pessoa escolhida');
+select teste.como('00000000-0000-0000-0000-0000000000bb');
+select teste.ok((select count(*) = 3 from horas), 'Com "horas" para ver, gerente vê as horas da equipe');
+select teste.ok(teste.linhas($$update horas set minutos = 1 where id = '40000000-0000-0000-0000-000000000001'$$) = 0, 'Só com "ver", gerente não corrige a hora dos outros');
+select teste.ok(teste.linhas($$insert into horas (usuario_id, minutos) values ('00000000-0000-0000-0000-0000000000cc', 30)$$) = 1, 'Gerente tentando lançar para outro...');
+select teste.ok((select count(*) = 0 from horas where usuario_id = '00000000-0000-0000-0000-0000000000cc' and minutos = 30), '...a hora fica no nome do próprio gerente');
+select teste.como('00000000-0000-0000-0000-0000000000cc');
+select teste.ok((select count(*) = 2 from horas), 'Freelancer vê só as próprias horas');
+select teste.ok(teste.linhas($$update horas set projeto_id = '20000000-0000-0000-0000-000000000002' where id = '40000000-0000-0000-0000-000000000001'$$) = -1 or (select projeto_id = '20000000-0000-0000-0000-000000000001' from horas where id = '40000000-0000-0000-0000-000000000001'), 'Freelancer não move hora para projeto que não enxerga');
+select teste.ok(teste.linhas($$delete from horas where id = '40000000-0000-0000-0000-000000000003'$$) = 1, 'Freelancer apaga a própria hora');
+select teste.como('00000000-0000-0000-0000-0000000000dd');
+select teste.ok((select count(*) = 0 from horas), 'Conta nova não vê horas de ninguém');
+select teste.como('00000000-0000-0000-0000-0000000000ee');
+select teste.ok(teste.linhas($$insert into horas (minutos) values (60)$$) = -1, 'Conta desativada não lança horas');
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+select teste.ok(teste.linhas($$delete from horas$$) = 3, 'Admin apaga qualquer hora');
+delete from permissoes where usuario_id = '00000000-0000-0000-0000-0000000000bb' and modulo = 'horas';
+reset role;
+set role anon;
+select teste.como(null);
+select teste.ok(teste.linhas($$select * from horas$$) = -1, 'Ataque: visitante sem login não lê horas');
+reset role;
+set role authenticated;
+select teste.como('00000000-0000-0000-0000-0000000000aa');
+
 -- Visitante sem login chamando as funções do banco direto pela API
 reset role;
 set role anon;
